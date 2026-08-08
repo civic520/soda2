@@ -7,7 +7,7 @@
 ### 用說的，打出來。
 
 **最快的本地語音輸入。按一下熱鍵 → 講 → 文字直接貼到你游標所在的位置。**
-**語音辨識完全在你的電腦本地運行，一個字都不上雲。**
+**語音辨識除了在你的電腦本地運行，也可選擇雲端模型。**
 
 <img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License">
 <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform">
