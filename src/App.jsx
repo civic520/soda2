@@ -15,6 +15,7 @@ import { Mic, MicOff, Settings, Copy, Download, X, Pin, Minus, Sparkles, Minimiz
 import SettingsPanel from "./components/SettingsPanel";
 import { ModelDownloadProgress } from "./components/ui/model-status-indicator";
 import { resolveStreamingModeAvailability } from "./utils/streamingModeSupport.mjs";
+import { playBase64Sound } from "./utils/audioPlayer";
 
 // 动态导入设置页面组件
 const SettingsPage = React.lazy(() => import('./settings.jsx').then(module => ({ default: module.SettingsPage })));
@@ -252,22 +253,10 @@ const TextDisplay = React.memo(({ originalText, processedText, scrollRef, t, onA
             <div className="px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100 dark:border-gray-700 mb-1">
               {t('panel.correctFor', { word: fix.target })}
             </div>
-            {fix.loading ? (
-              <div className="px-3 py-2 text-xs text-gray-400">{t('panel.correctLoading')}</div>
-            ) : (
-              fix.suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => pick(s)}
-                  className="block w-full text-left px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-sky-50 dark:hover:bg-sky-900/30"
-                >
-                  {s}
-                </button>
-              ))
-            )}
-            {/* 自己輸入：成為記憶字典，下次自動修 */}
-            <div className="px-2 pt-1 mt-1 border-t border-gray-100 dark:border-gray-700">
+            {/* 自己輸入：移到最上面（建議再多也看得到、點得到）＋ autoFocus。成為記憶字典，下次自動修（issue #19） */}
+            <div className="px-2 pb-1 mb-1 border-b border-gray-100 dark:border-gray-700">
               <input
+                autoFocus
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') pick(custom); }}
@@ -276,6 +265,22 @@ const TextDisplay = React.memo(({ originalText, processedText, scrollRef, t, onA
                 style={{ WebkitAppRegion: 'no-drag' }}
               />
             </div>
+            {fix.loading ? (
+              <div className="px-3 py-2 text-xs text-gray-400">{t('panel.correctLoading')}</div>
+            ) : (
+              /* 建議清單可捲動：再多也不撐爆視窗（issue #19） */
+              <div className="max-h-44 overflow-y-auto">
+                {fix.suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => pick(s)}
+                    className="block w-full text-left px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-sky-50 dark:hover:bg-sky-900/30"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -333,6 +338,7 @@ const SettingsPageWrapper = () => {
 export default function App() {
   // 检查URL参数来决定渲染哪个页面
   const urlParams = new URLSearchParams(window.location.search);
+  const isControlPanel = urlParams.get('panel') === 'control';
   const page = urlParams.get('page');
 
   // 如果是设置页面，直接渲染设置组件（使用单独组件避免hooks规则问题）
@@ -369,10 +375,15 @@ export default function App() {
   const [miniFlash, setMiniFlash] = useState(null); // 迷你模式：在小條上閃一下的訊息（取代浮動 toast）
   const miniFlashTimer = useRef(null);
   const [aiOptimizationEnabled, setAiOptimizationEnabled] = useState(false); // AI 優化狀態
+  const aiOptimizeTemporaryRef = useRef(false); // 快捷鍵暫時啟用 AI 優化（錄音停止後自動關閉）
+  const aiOptEnabledRef = useRef(false); // 給 useEffect 閉包讀最新 AI 狀態，避免 stale closure
 
   // 錄音完成後動作設定
   const [pasteAfterTranscription, setPasteAfterTranscription] = useState(true);
   const [autoEnterAfterPaste, setAutoEnterAfterPaste] = useState(false);
+  const [recordingSoundEnabled, setRecordingSoundEnabled] = useState(true);
+  const [soundFeedbackVolume, setSoundFeedbackVolume] = useState(0.8);
+  const [muteWhileRecording, setMuteWhileRecording] = useState(false);
 
   // 點擊錄音流程：等待使用者點擊目標位置
   const [waitingForTarget, setWaitingForTarget] = useState(false);
@@ -393,6 +404,15 @@ export default function App() {
 
         const autoEnter = await window.electronAPI.getSetting('auto_enter_after_paste', false);
         setAutoEnterAfterPaste(autoEnter === true);
+
+        const soundEnabled = await window.electronAPI.getSetting('recording_sound_enabled', true);
+        setRecordingSoundEnabled(soundEnabled !== false);
+
+        const fbVol = await window.electronAPI.getSetting('sound_feedback_volume', 0.8);
+        setSoundFeedbackVolume(Math.min(1, Math.max(0, fbVol || 0.8)));
+
+        const muteRec = await window.electronAPI.getSetting('mute_while_recording', false);
+        setMuteWhileRecording(muteRec === true);
 
         // 載入置頂狀態
         const alwaysOnTop = await window.electronAPI.getSetting('window_always_on_top', true);
@@ -418,6 +438,23 @@ export default function App() {
           setIsAlwaysOnTop(data.value !== false);
         } else if (data.key === 'enable_ai_optimization') {
           setAiOptimizationEnabled(data.value === true);
+        } else if (data.key === 'recording_sound_enabled') {
+          setRecordingSoundEnabled(data.value !== false);
+        } else if (data.key === 'sound_feedback_volume') {
+          setSoundFeedbackVolume(Math.min(1, Math.max(0, data.value || 0.8)));
+        } else if (data.key === 'mute_while_recording') {
+          setMuteWhileRecording(data.value === true);
+        } else if (data.key === 'app_theme') {
+          const root = document.documentElement;
+          root.classList.remove('dark', 'theme-dark-tech', 'theme-premium-light', 'theme-light-blue');
+          const theme = data.value || 'system';
+          if (theme === 'system') {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+              root.classList.add('dark');
+            }
+          } else {
+            root.classList.add(theme);
+          }
         }
       });
       return () => {
@@ -425,6 +462,11 @@ export default function App() {
       };
     }
   }, []);
+
+  // 同步 aiOptEnabledRef，讓 useEffect 閉包永遠讀到最新 AI 狀態
+  useEffect(() => {
+    aiOptEnabledRef.current = aiOptimizationEnabled;
+  }, [aiOptimizationEnabled]);
 
   // 条件性显示通知的辅助函数
   const showNotification = useCallback((type, message, options) => {
@@ -541,6 +583,55 @@ export default function App() {
   const { isDragging, handleMouseDown, handleMouseMove, handleMouseUp, handleClick } = useWindowDrag();
   const modelStatus = useModelStatus();
   
+  const [activeModelName, setActiveModelName] = useState("");
+  const [cloudAsrActive, setCloudAsrActive] = useState(false);
+
+  const loadActiveModelName = useCallback(async () => {
+    if (!window.electronAPI) return;
+    try {
+      const cloudSettings = await window.electronAPI.getSetting('cloud_asr_settings', null);
+      let parsed = null;
+      if (cloudSettings) {
+        parsed = typeof cloudSettings === 'string' ? JSON.parse(cloudSettings) : cloudSettings;
+      }
+      const isCloud = parsed && parsed.enabled === true;
+      setCloudAsrActive(isCloud);
+      if (isCloud) {
+        const providerName = parsed.provider ? parsed.provider.toUpperCase() : "雲端";
+        const modelName = parsed.model || "預設";
+        setActiveModelName(`線上: ${providerName} (${modelName})`);
+      } else {
+        const localModelType = await window.electronAPI.getSetting('asr_model_type', 'paraformer');
+        const modelMap = {
+          paraformer: "Paraformer 中文",
+          sense_voice: "SenseVoice 多語言",
+          whisper: "Whisper 中英",
+          qwen3_asr: "Qwen3-ASR 阿里",
+          breeze_asr_25: "Breeze-ASR 聯發科"
+        };
+        const localName = modelMap[localModelType] || localModelType;
+        setActiveModelName(`本地: ${localName}`);
+      }
+    } catch (e) {
+      console.error("載入模型名稱失敗:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadActiveModelName();
+
+    if (window.electronAPI?.onSettingChanged) {
+      const unsubscribe = window.electronAPI.onSettingChanged((data) => {
+        if (data.key === 'asr_model_type' || data.key === 'cloud_asr_settings') {
+          loadActiveModelName();
+        }
+      });
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [loadActiveModelName]);
+  
   // 傳統錄音模式
   const {
     isRecording: isRecordingNormal,
@@ -608,17 +699,17 @@ export default function App() {
     }
   }, []);
 
-  // 啟用 TypeLess 模式（右 Alt 已是唯一錄音方式，固定一律啟用，不再受設定開關控制）
+  // 啟用 TypeLess 模式（右 Alt 已是唯一錄音方式，固定一律啟用，不再受設定開關控制，且控制面板視窗不重複啟用）
   useEffect(() => {
     const enableTypeless = async () => {
-      if (window.electronAPI) {
+      if (window.electronAPI && !isControlPanel) {
         setTypelessMode(true);
         // 觸發鍵由主進程固定為右 Alt（setRightAltToggle），這裡傳入值會被忽略
         await window.electronAPI.enableTypelessMode('AltRight');
       }
     };
     enableTypeless();
-  }, []);
+  }, [isControlPanel]);
 
   // 統一的錄音狀態（根據模式選擇）
   const isRecording = streamingMode ? isRecordingStreaming : isRecordingNormal;
@@ -630,22 +721,59 @@ export default function App() {
     if (isRecording) recordingStartRef.current = Date.now();
   }, [isRecording]);
 
+  // 錄音提示音
+  const playBeep = useCallback(async (name) => {
+    if (!recordingSoundEnabled) { console.log('[sound] playBeep skipped: recordingSoundEnabled=false'); return; }
+    try {
+      console.log('[sound] playBeep calling IPC for:', name);
+      const res = await window.electronAPI?.playSound(name);
+      console.log('[sound] playBeep IPC result:', res ? `data=${res.data?.length}chars, mimeType=${res.mimeType}, playedNatively=${res.playedNatively}` : 'null');
+      if (res?.playedNatively || !res?.data) return;
+      await playBase64Sound(res.data, res.mimeType, soundFeedbackVolume);
+      console.log('[sound] playBeep completed');
+    } catch (e) { console.warn('[sound] playBeep error:', e); }
+  }, [recordingSoundEnabled, soundFeedbackVolume]);
+
   // 統一的錄音函數
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback(async () => {
+    console.log('[mute-debug] startRecording called, muteWhileRecording=' + muteWhileRecording);
+    await playBeep('rec_start');
+    // 等音效播放完畢再靜音，否則使用者聽不到啟動音
+    await new Promise(r => setTimeout(r, 200));
+    if (muteWhileRecording) {
+      console.log('[mute-debug] calling muteSystemAudio(true)...');
+      window.electronAPI?.muteSystemAudio(true).then(r => {
+        console.log('[mute-debug] muteSystemAudio result:', JSON.stringify(r));
+      }).catch(e => console.warn('[mute-debug] mute error:', e));
+    }
     if (streamingMode) {
       startStreaming();
     } else {
       startRecordingNormal();
     }
-  }, [streamingMode, startStreaming, startRecordingNormal]);
+  }, [streamingMode, startStreaming, startRecordingNormal, playBeep, muteWhileRecording]);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback(async () => {
+    console.log('[mute-debug] stopRecording called, muteWhileRecording=' + muteWhileRecording);
+    if (muteWhileRecording) {
+      console.log('[mute-debug] calling muteSystemAudio(false)...');
+      window.electronAPI?.muteSystemAudio(false).then(r => {
+        console.log('[mute-debug] unmuteSystemAudio result:', JSON.stringify(r));
+      }).catch(e => console.warn('[mute-debug] unmute error:', e));
+    }
+    // 注意：AI 優化設定不能在這裡清除！processAudio 需要讀取 setSetting 的值
+    // 清除邏輯已移到 handleAIOptimizationComplete（轉錄完成後才清除）
+    await playBeep('rec_stop');
+    // 等音效播完再停止錄音
+    await new Promise(r => setTimeout(r, 200));
     if (streamingMode) {
       stopStreaming();
     } else {
       stopRecordingNormal();
     }
-  }, [streamingMode, stopStreaming, stopRecordingNormal]);
+    // 通知主進程錄音已停止（隱藏藥丸視窗）
+    try { window.electronAPI?.notifyRecordingStopped?.(); } catch (e) { /* ignore */ }
+  }, [streamingMode, stopStreaming, stopRecordingNormal, playBeep, muteWhileRecording]);
 
   const {
     processText,
@@ -785,10 +913,23 @@ export default function App() {
       if (textToPaste) {
         await safePaste(textToPaste);
       }
+      
+      // 如果啟用了 AI 優化但失敗了（例如未配置金鑰或請求逾時），顯示警告提示
+      if (aiOptEnabledRef.current && optimizedResult.ai_error) {
+        showNotification('warning', `AI 優化未生效: ${optimizedResult.ai_error}`);
+      }
     }
+
+    // 轉錄 + AI 處理完成後，若 AI 是快捷鍵暫時啟用的，此時才清除
+    if (aiOptimizeTemporaryRef.current) {
+      aiOptimizeTemporaryRef.current = false;
+      setAiOptimizationEnabled(false);
+      window.electronAPI?.setSetting('enable_ai_optimization', false).catch(() => {});
+    }
+
     // 轉錄完成、字數已寫入資料庫後，檢查是否突破新等級
     setTimeout(() => checkLevelUp(), 400);
-  }, [safePaste, checkLevelUp]);
+  }, [safePaste, checkLevelUp, aiOptimizationEnabled, showNotification]);
 
   // 设置转录完成回调
   useEffect(() => {
@@ -905,32 +1046,27 @@ export default function App() {
 
   // 熱鍵觸發的錄音切換（前景視窗已由主進程儲存）
   const toggleRecordingByHotkey = useCallback(async () => {
-    if (!checkModelReady()) return;
-
-    if (!isRecording && !isRecordingProcessing) {
-      // 熱鍵觸發：前景視窗已在主進程儲存，直接開始錄音
-      startRecording();
-    } else if (isRecording) {
+    // 停止永遠優先：即使模型掛了也要能關掉錄音
+    if (isRecording) {
       stopRecording();
+      return;
     }
+    if (isRecordingProcessing) return;
+
+    if (!checkModelReady()) return;
+    startRecording();
   }, [checkModelReady, isRecording, isRecordingProcessing, startRecording, stopRecording]);
 
   // 點擊按鈕觸發的錄音 - 簡單版：直接開始錄音
   const handleClickRecording = useCallback(async () => {
-    if (!checkModelReady()) return;
-
+    // 停止永遠優先：即使模型掛了也要能關掉錄音
     if (isRecording) {
-      // 如果正在錄音，停止錄音
       stopRecording();
       return;
     }
+    if (isRecordingProcessing) return;
 
-    if (isRecordingProcessing) {
-      // 正在處理中，忽略
-      return;
-    }
-
-    // 直接開始錄音
+    if (!checkModelReady()) return;
     startRecording();
   }, [checkModelReady, isRecording, isRecordingProcessing, stopRecording, startRecording]);
 
@@ -940,7 +1076,7 @@ export default function App() {
       setWaitingForTarget(false);
       // 前景視窗已由主進程在熱鍵觸發時儲存
       startRecording();
-      // 顯示聲聲慢視窗
+      // 顯示說打兔視窗
       if (window.electronAPI) {
         window.electronAPI.showWindow();
       }
@@ -1021,6 +1157,8 @@ export default function App() {
   const toggleAiOptimization = useCallback(async () => {
     const next = !aiOptimizationEnabled;
     setAiOptimizationEnabled(next);
+    // 手動切換時，清除快捷鍵暫時啟用狀態（手動操作覆蓋快捷鍵）
+    aiOptimizeTemporaryRef.current = false;
     try {
       if (window.electronAPI?.setSetting) {
         await window.electronAPI.setSetting('enable_ai_optimization', next);
@@ -1042,6 +1180,12 @@ export default function App() {
 
   // 處理取消錄音：丟棄音訊，不轉錄、不貼上（而非 stopRecording 會處理結果）
   const handleCancelRecording = useCallback(() => {
+    // 取消錄音時，若 AI 優化是快捷鍵暫時啟用的，自動關閉
+    if (aiOptimizeTemporaryRef.current) {
+      aiOptimizeTemporaryRef.current = false;
+      setAiOptimizationEnabled(false);
+      window.electronAPI?.setSetting('enable_ai_optimization', false).catch(() => {});
+    }
     if (isRecordingNormal) {
       cancelRecordingNormal();
       notifyCancel();
@@ -1049,6 +1193,8 @@ export default function App() {
       cancelStreaming();
       notifyCancel();
     }
+    // 通知主進程錄音已取消（隱藏藥丸視窗）
+    try { window.electronAPI?.notifyRecordingStopped?.(); } catch (e) { /* ignore */ }
   }, [isRecordingNormal, cancelRecordingNormal, streamingMode, cancelStreaming, showNotification]);
 
   // 處理複製上次結果
@@ -1137,70 +1283,215 @@ export default function App() {
         toggleRecording();
       });
 
+      // 緊急重置事件（globalShortcut Ctrl+Shift+F9，獨立於 uiohook 的保險路徑）
+      const unsubscribeEmergencyReset = window.electronAPI.onEmergencyReset?.(() => {
+        console.log('緊急重置: 收到事件');
+        // 不管 recordings 什麼狀態都強制重設
+        recordingStartedRef.current = false;
+        stopRecording();
+        showNotification('info', t('notifications.emergencyReset') || '緊急重置：已停止錄音並重置熱鍵狀態');
+      });
+
+      // AI 優化錄音快捷鍵（globalShortcut，獨立於 TypeLess）
+      // 按一下：開始錄音 + 啟用 AI 優化；再按一下：停止錄音
+      const unsubscribeAiOptRec = window.electronAPI.onAiOptimizeRecordingToggle?.(() => {
+        console.log('AI 優化錄音快捷鍵觸發');
+        if (isRecordingRef.current) {
+          // 正在錄音 → 停止
+          stopRecording();
+          // 通知主進程隱藏藥丸（globalShortcut 路徑）
+          try { window.electronAPI?.notifyRecordingStopped?.(); } catch (e) { /* ignore */ }
+        } else {
+          // 未錄音 → 啟用 AI + 開始錄音
+          if (!aiOptEnabledRef.current) {
+            aiOptimizeTemporaryRef.current = true;
+            setAiOptimizationEnabled(true);
+            window.electronAPI?.setSetting('enable_ai_optimization', true).catch(() => {});
+          }
+          startRecording();
+        }
+      });
+
+      // AI 優化錄音 — uiohook 觸發（右 Alt/右 Ctrl）
+      const unsubscribeAiOptRecStart = window.electronAPI.onAiOptimizeRecordingStart?.(() => {
+        console.log('AI 優化錄音 (uiohook): 開始');
+        if (!aiOptEnabledRef.current) {
+          aiOptimizeTemporaryRef.current = true;
+          setAiOptimizationEnabled(true);
+          window.electronAPI?.setSetting('enable_ai_optimization', true).catch(() => {});
+        }
+        startRecording();
+      });
+
+      const unsubscribeAiOptRecStop = window.electronAPI.onAiOptimizeRecordingStop?.(() => {
+        console.log('AI 優化錄音 (uiohook): 停止');
+        stopRecording();
+      });
+
       return () => {
         if (unsubscribeAction) unsubscribeAction();
         if (unsubscribeHotkey) unsubscribeHotkey();
         if (unsubscribeToggle) unsubscribeToggle();
+        if (unsubscribeEmergencyReset) unsubscribeEmergencyReset();
+        if (unsubscribeAiOptRec) unsubscribeAiOptRec();
+        if (unsubscribeAiOptRecStart) unsubscribeAiOptRecStart();
+        if (unsubscribeAiOptRecStop) unsubscribeAiOptRecStop();
       };
     }
-  }, [toggleRecording, handleCancelRecording, handleCopyLastResult]);
+  }, [toggleRecording, handleCancelRecording, handleCopyLastResult, stopRecording, showNotification, t]);
 
-  // TypeLess 模式事件監聽（按住錄音）
+  // 使用 Ref 避免 TypeLess 事件監聽器發生 stale closure (閉包過期) 導致無法停止或重設的問題
+  const isRecordingNormalRef = React.useRef(false);
+  const isRecordingProcessingNormalRef = React.useRef(false);
+  const modelStatusIsReadyRef = React.useRef(false);
+  const recordingStartedRef = React.useRef(false); // 同步旗標：在 startRecordingNormal 前立即設 true
+  const muteWhileRecordingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    isRecordingNormalRef.current = isRecordingNormal;
+  }, [isRecordingNormal]);
+
+  React.useEffect(() => {
+    isRecordingProcessingNormalRef.current = isRecordingProcessingNormal;
+  }, [isRecordingProcessingNormal]);
+
+  React.useEffect(() => {
+    modelStatusIsReadyRef.current = modelStatus.isReady;
+  }, [modelStatus.isReady]);
+
+  React.useEffect(() => {
+    muteWhileRecordingRef.current = muteWhileRecording;
+  }, [muteWhileRecording]);
+
+  // TypeLess 模式事件監聽（按住錄音，僅在主視窗中運作）
   useEffect(() => {
-    if (!window.electronAPI || !typelessMode) return;
+    if (!window.electronAPI || !typelessMode || isControlPanel) return;
 
     // 監聽 TypeLess 開始錄音事件
     // Typeless 一律使用離線辨識路徑（startRecordingNormal），不受串流模式影響，
     // 因此即使串流模型未下載/串流模式開啟，按住說話依然可用。
     const unsubscribeStart = window.electronAPI.onTypelessStartRecording?.(() => {
-      console.log('TypeLess: 收到開始錄音事件');
-      if (!isRecordingNormal && !isRecordingProcessingNormal && modelStatus.isReady) {
-        startRecordingNormal();
+      console.log('[mute-debug] TypeLess start, muteWhileRecordingRef=' + muteWhileRecordingRef.current);
+      if (isRecordingNormalRef.current) {
+        recordingStartedRef.current = false;
+        playBeep('rec_stop');
+        if (muteWhileRecordingRef.current) {
+          console.log('[mute-debug] TypeLess calling unmute...');
+          window.electronAPI?.muteSystemAudio(false).then(r => console.log('[mute-debug] TypeLess unmute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] unmute error:', e));
+        }
+        stopRecordingNormal();
+      } else if (!isRecordingProcessingNormalRef.current && modelStatusIsReadyRef.current) {
+        recordingStartedRef.current = true;
+        (async () => {
+          await playBeep('rec_start');
+          await new Promise(r => setTimeout(r, 200));
+          if (muteWhileRecordingRef.current) {
+            console.log('[mute-debug] TypeLess calling mute...');
+            window.electronAPI?.muteSystemAudio(true).then(r => console.log('[mute-debug] TypeLess mute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] mute error:', e));
+          }
+          startRecordingNormal();
+        })();
+      } else {
+        if (window.electronAPI?.syncTypelessState) {
+          window.electronAPI.syncTypelessState(false);
+        }
       }
     });
 
-    // 監聽 TypeLess 停止錄音事件
     const unsubscribeStop = window.electronAPI.onTypelessStopRecording?.(() => {
       console.log('TypeLess: 收到停止錄音事件');
-      if (isRecordingNormal) {
-        stopRecordingNormal();
+      recordingStartedRef.current = false;
+      // 注意：AI 優化設定不能在這裡清除！processAudio 需要讀取 setSetting 的值
+      // 清除邏輯已移到 handleAIOptimizationComplete（轉錄完成後才清除）
+      if (muteWhileRecordingRef.current) {
+        console.log('[mute-debug] TypeLess stop calling unmute...');
+        window.electronAPI?.muteSystemAudio(false).then(r => console.log('[mute-debug] TypeLess stop unmute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] unmute error:', e));
       }
+      (async () => {
+        await playBeep('rec_stop');
+        await new Promise(r => setTimeout(r, 200));
+        if (isRecordingNormalRef.current) {
+          stopRecordingNormal();
+        } else {
+          if (window.electronAPI?.syncTypelessState) {
+            window.electronAPI.syncTypelessState(false);
+          }
+        }
+      })();
     });
 
     // 監聽 TypeLess 取消錄音事件（錄音中按 Esc）：丟棄音訊，不轉錄、不貼上
     const unsubscribeCancel = window.electronAPI.onTypelessCancelRecording?.(() => {
       console.log('TypeLess: 收到取消錄音事件 (Esc)');
-      if (isRecordingNormal) {
+      if (muteWhileRecordingRef.current) {
+        console.log('[mute-debug] TypeLess cancel calling unmute...');
+        window.electronAPI?.muteSystemAudio(false).then(r => console.log('[mute-debug] TypeLess cancel unmute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] unmute error:', e));
+      }
+      if (isRecordingNormalRef.current) {
         cancelRecordingNormal();
         notifyCancel();
       }
+      // Esc 取消時，清除 AI 優化暫時啟用狀態
+      if (aiOptimizeTemporaryRef.current) {
+        aiOptimizeTemporaryRef.current = false;
+        setAiOptimizationEnabled(false);
+        window.electronAPI?.setSetting('enable_ai_optimization', false).catch(() => {});
+      }
+    });
+
+    // AI 優化快捷錄音：trigger + Shift 組合暫時啟用 AI 優化
+    const unsubscribeAiOptEnable = window.electronAPI.onTypelessAiOptimizeEnable?.(() => {
+      console.log('TypeLess: AI 優化快捷錄音啟用');
+      // 僅在 AI 優化未手動開啟時才暫時啟用（用 ref 避免 stale closure）
+      if (!aiOptEnabledRef.current) {
+        aiOptimizeTemporaryRef.current = true;
+        setAiOptimizationEnabled(true);
+        window.electronAPI?.setSetting('enable_ai_optimization', true).catch(() => {});
+      }
+    });
+
+    const unsubscribeAiOptDisable = window.electronAPI.onTypelessAiOptimizeDisable?.(() => {
+      console.log('TypeLess: AI 優化快捷錄音自動關閉');
+      // 不在這裡清除 AI 設定 — 錄音停止時 processAudio 還需要讀到 setting=true
+      // 清除邏輯已移到 handleAIOptimizationComplete（轉錄完成後才清除）
     });
 
     return () => {
       if (unsubscribeStart) unsubscribeStart();
       if (unsubscribeStop) unsubscribeStop();
       if (unsubscribeCancel) unsubscribeCancel();
+      if (unsubscribeAiOptEnable) unsubscribeAiOptEnable();
+      if (unsubscribeAiOptDisable) unsubscribeAiOptDisable();
     };
-  }, [typelessMode, isRecordingNormal, isRecordingProcessingNormal, modelStatus.isReady, startRecordingNormal, stopRecordingNormal, cancelRecordingNormal, showNotification]);
+  }, [typelessMode, isControlPanel, startRecordingNormal, stopRecordingNormal, cancelRecordingNormal, playBeep]);
 
   // 載入時把 TypeLess 切換狀態強制重置為「未錄音」，
-  // 避免重載/HMR/崩潰後主進程 isActive 與前端脫鉤（按鍵 off-by-one）。
+  // 避免重載/HMR/崩潰後主進程 isActive 與前端脫鉤（按鍵 off-by-one）。（控制面板不執行）
   useEffect(() => {
+    if (isControlPanel) return;
     if (window.electronAPI?.syncTypelessState) {
       window.electronAPI.syncTypelessState(false);
     }
-  }, []);
+  }, [isControlPanel]);
 
   // 同步录音状态到热键管理器
   useEffect(() => {
+    if (isControlPanel) return;
     if (syncRecordingState) {
       syncRecordingState(isRecording);
     }
-    // 同步真實錄音狀態給 TypeLess，避免「右 Alt 切換」與「滑鼠點麥克風」打架
+    // 同步真實錄音狀態給 TypeLess（用 isRecordingNormal 而非 isRecording，
+    // 因為 TypeLess 固定使用離線路徑；串流模式開啟時 isRecording 會變成
+    // isRecordingStreaming，把 isActive 洗掉導致右 Alt 第二次按無法停止）。
+    // （將 isRecordingNormal 與 isControlPanel 補入依賴項，確保在任何模式與任何視窗下同步工作都正常）
     if (window.electronAPI?.syncTypelessState) {
-      window.electronAPI.syncTypelessState(isRecording);
+      window.electronAPI.syncTypelessState(isRecordingNormal);
     }
-  }, [isRecording, syncRecordingState]);
+    // 非 TypeLess 路徑結束錄音（例如滑鼠點取消）也要清同步旗標
+    if (!isRecording) {
+      recordingStartedRef.current = false;
+    }
+  }, [isRecording, isRecordingNormal, syncRecordingState, isControlPanel]);
 
   // 监听键盘事件
   useEffect(() => {
@@ -1348,23 +1639,24 @@ export default function App() {
     }[miniFlash.type] || 'text-gray-900 dark:text-white') : '';
     return (
       <div
-        className={`relative h-screen w-screen flex items-center gap-3 px-3 bg-white/95 dark:bg-gray-900/95 rounded-xl shadow-2xl overflow-hidden select-none ${
+        className={`relative h-screen w-screen flex items-center gap-3 px-3 mini-capsule rounded-xl shadow-2xl overflow-hidden select-none ${
           commandMode
-            ? 'border-2 border-dashed border-sky-400'
-            : 'border border-gray-200 dark:border-gray-700/70'
+            ? 'border-2 border-dashed mini-capsule-border-command'
+            : ''
         }`}
         style={{ WebkitAppRegion: 'drag' }}
       >
         <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-          isRecording ? (commandMode ? 'bg-sky-400 animate-pulse' : 'bg-red-500 animate-pulse') : commandMode ? 'bg-sky-100 dark:bg-sky-900/40' : 'bg-gray-100 dark:bg-gray-800'
+          isRecording ? (commandMode ? 'mini-capsule-icon-command animate-pulse' : (cloudAsrActive ? 'mini-capsule-icon-cloud animate-pulse' : 'mini-capsule-icon-recording animate-pulse')) : commandMode ? 'mini-capsule-icon-command-idle' : 'bg-gray-100 dark:bg-gray-800'
         }`}>
-          <img src="./icon.png" alt="" className="w-7 h-7 rounded-md" draggable="false" />
+          {cloudAsrActive && isRecording && (<><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /></>)}
+          <img src="./icon.png" alt="" className="w-7 h-7 rounded-md relative z-10" draggable="false" />
         </div>
         <div className="flex-1 min-w-0">
           <div className={`text-[13px] font-semibold leading-tight ${
             miniFlash ? flashColor
-              : isRecording ? (commandMode ? 'text-sky-500 dark:text-sky-300' : 'text-red-500 dark:text-red-400')
-              : commandMode ? 'text-sky-500 dark:text-sky-300'
+              : isRecording ? (commandMode ? 'mini-capsule-text-command' : (cloudAsrActive ? 'mini-capsule-text-cloud' : 'mini-capsule-text-recording'))
+              : commandMode ? 'mini-capsule-text-command'
               : 'text-gray-900 dark:text-white'
           }`}>
             {miniFlash ? miniFlash.message
@@ -1373,7 +1665,7 @@ export default function App() {
               : commandMode ? t('panel.commandModeBadge')
               : t('panel.miniIdle')}
           </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight mt-0.5 overflow-hidden">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mini-capsule-subtitle leading-tight mt-0.5 overflow-hidden">
             {shouldMarquee ? (
               <div
                 className="mini-marquee"
@@ -1645,9 +1937,14 @@ export default function App() {
           )}
         </div>
 
-        {/* 底部列：左=次數、中=署名、右=字數（mt-auto 推到最底）*/}
-        <div className="mt-auto flex-shrink-0 flex items-center justify-between gap-2 px-1 pt-1.5 text-[11px] select-none">
+        {/* 底部列：左=次數、中=作用中模型、右=字數（mt-auto 推到最底）*/}
+        <div className="mt-auto flex-shrink-0 flex items-center justify-between gap-2 px-1 pt-1.5 text-[11px] select-none font-sans">
           <span className="tabular-nums text-sky-500/80 dark:text-sky-400/70">{t('panel.statsUses', { n: stats?.total || 0 })}</span>
+          {activeModelName && (
+            <span className="text-gray-500 dark:text-gray-400 font-medium truncate max-w-[180px]" title={activeModelName}>
+              {activeModelName}
+            </span>
+          )}
           <span className="tabular-nums text-sky-500/80 dark:text-sky-400/70">{t('panel.statsChars', { n: (stats?.totalChars || 0).toLocaleString() })}</span>
         </div>
       </div>

@@ -42,6 +42,27 @@ module.exports = function register(ctx) {
   ipcMain.handle("set-setting", (event, key, value) => {
     const result = ctx.databaseManager.setSetting(key, value);
 
+    // 當變更自啟動設定時，同步更新系統自啟動狀態
+    if (key === 'auto_start' || key === 'auto_start_minimized') {
+      const autoStart = key === 'auto_start' ? value : ctx.databaseManager.getSetting('auto_start', false);
+      const autoStartMinimized = key === 'auto_start_minimized' ? value : ctx.databaseManager.getSetting('auto_start_minimized', true);
+      const { app } = require('electron');
+      try {
+        app.setLoginItemSettings({
+          openAtLogin: !!autoStart,
+          path: process.execPath,
+          args: autoStartMinimized ? ["--hidden"] : []
+        });
+        if (ctx.logger && ctx.logger.info) {
+          ctx.logger.info(`[AutoStart] 已更新自啟動設定: openAtLogin=${!!autoStart}, args=${autoStartMinimized ? '["--hidden"]' : '[]'}`);
+        }
+      } catch (e) {
+        if (ctx.logger && ctx.logger.warn) {
+          ctx.logger.warn("更新開機自啟動設定失敗:", e.message || e);
+        }
+      }
+    }
+
     // 廣播設定變更到所有視窗（用於跨視窗同步）
     const { BrowserWindow } = require('electron');
     BrowserWindow.getAllWindows().forEach(win => {

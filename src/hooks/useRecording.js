@@ -25,6 +25,11 @@ export const useRecording = (modelStatus) => {
 
   // 添加防重复处理机制
   const processingRef = useRef({ isProcessingAudio: false, lastProcessTime: 0 });
+  const isRecordingRef = useRef(false); // 最新錄音狀態（避免 stopRecording 閉包過期）
+
+  // 取消旗標：stopRecording 在 startRecording 非同步初始化途中被叫時，
+  // 設此旗標讓 startRecording 在 await 回來後自己收手，避免殘留資源。
+  const startCancelledRef = useRef(false);
 
   // 邊錄邊算（precog）：長講時錄音中先解碼已講完的段落，停止只剩尾段。
   // 錄音超過 PRECOG_START_SEC 才啟動 — 短句維持單次解碼路徑（保留停頓斷行）。
@@ -113,6 +118,7 @@ export const useRecording = (modelStatus) => {
   const startRecording = useCallback(async () => {
     try {
       setError(null);
+      startCancelledRef.current = false; // 清除可能的舊取消旗標
 
       // 检查 Sherpa 是否就绪
       if (!modelStatus.isReady) {
@@ -133,6 +139,7 @@ export const useRecording = (modelStatus) => {
       // ⚡ 立即設定錄音狀態，讓 UI 馬上反應
       if (micPermissionRef.current === 'granted') {
         setIsRecording(true);
+        isRecordingRef.current = true;
       }
 
       // 请求麦克风权限
@@ -167,10 +174,18 @@ export const useRecording = (modelStatus) => {
         }
       }
 
+      // 如果在 getUserMedia 途中被 stop（startCancelledRef 被 stopRecording 設為 true），直接放棄
+      if (startCancelledRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        startCancelledRef.current = false;
+        return;
+      }
+
       // 更新狀態
       if (micPermissionRef.current !== 'granted') {
         micPermissionRef.current = 'granted';
         setIsRecording(true);
+        isRecordingRef.current = true;
       }
 
       streamRef.current = stream;
@@ -210,6 +225,13 @@ export const useRecording = (modelStatus) => {
         await audioContext.resume();
       }
 
+      // 如果在 resume 途中被 stop，放棄
+      if (startCancelledRef.current) {
+        cleanup();
+        startCancelledRef.current = false;
+        return;
+      }
+
       // 創建音源節點
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
@@ -234,6 +256,13 @@ export const useRecording = (modelStatus) => {
       try {
         asrProfile = await window.electronAPI?.getSetting?.('asr_profile', 'standard') || 'standard';
       } catch (e) { /* 預設 standard */ }
+
+      if (startCancelledRef.current) {
+        cleanup();
+        startCancelledRef.current = false;
+        return;
+      }
+
       precogRef.current = { active: false, fedChunks: 0, recoveryFed: 0, timer: null, profile: asrProfile };
       const srcRate = audioContext.sampleRate;
       // 崩潰救援：開一條暫存檔，錄音中持續寫入；正常/取消停止時會刪掉
@@ -271,13 +300,18 @@ export const useRecording = (modelStatus) => {
     } catch (err) {
       setError(t('errors.cannotStartRecording', { error: err.message }));
       setIsRecording(false);
+      isRecordingRef.current = false;
       cleanup();
     }
   }, [modelStatus.isReady, modelStatus.isLoading, modelStatus.error, cleanup, t]);
 
   // 停止录音
   const stopRecording = useCallback(async () => {
-    if (!isRecording) return;
+    // 通知 startRecording（若仍在非同步初始化中）立刻放棄
+    startCancelledRef.current = true;
+
+    if (!isRecordingRef.current) return;
+    isRecordingRef.current = false;
 
     setIsRecording(false);
     setIsProcessing(true);
@@ -285,6 +319,9 @@ export const useRecording = (modelStatus) => {
     try {
       // 檢查是否有錄音數據
       if (pcmBufferRef.current.length === 0) {
+        if (!streamRef.current) {
+          throw new Error(t('errors.micInitializing'));
+        }
         throw new Error(t('errors.emptyRecording'));
       }
 
@@ -332,11 +369,13 @@ export const useRecording = (modelStatus) => {
       // 處理音頻
       const autoFormatLists = await window.electronAPI?.getSetting?.('auto_format_lists', false);
       const autoLineBreak = await window.electronAPI?.getSetting?.('auto_line_break', false);
+      const saveAudio = await window.electronAPI?.getSetting?.('save_audio', true);
       await processAudio(wavBlob, {
         use_precog: precogActive,
         profile: precogRef.current.profile || 'standard',
         auto_format_lists: autoFormatLists === true,
         auto_line_break: autoLineBreak === true,
+        save_audio: saveAudio !== false,
       });
     } catch (err) {
       setError(t('errors.audioProcessingFailed', { error: err.message }));
@@ -344,7 +383,7 @@ export const useRecording = (modelStatus) => {
     } finally {
       setIsProcessing(false);
     }
-  }, [isRecording, cleanup, t]);
+  }, [cleanup, t, stopPrecogTimer]);
 
   // 处理音频（接收已經是 WAV 格式的 blob）
   const processAudio = useCallback(async (wavBlob, transcribeOptions = {}) => {
@@ -436,11 +475,13 @@ export const useRecording = (modelStatus) => {
                       window.electronAPI.log('info', 'AI文本优化成功', processed_text.substring(0, 50) + '...');
                     }
                   } else {
+                    finalData.ai_error = result?.error || '未知錯誤';
                     if (window.electronAPI && window.electronAPI.log) {
                       window.electronAPI.log('error', 'AI文本优化失败:', result);
                     }
                   }
                 } catch (err) {
+                  finalData.ai_error = err.message || '未知錯誤';
                   if (window.electronAPI && window.electronAPI.log) {
                     window.electronAPI.log('error', 'AI文本优化捕获到错误:', err);
                   }
@@ -475,6 +516,7 @@ export const useRecording = (modelStatus) => {
                     ...transcriptionResult,
                     text: raw_text,
                     enhanced_by_ai: false,
+                    ai_error: finalData.ai_error
                   };
                   if (window.onAIOptimizationComplete) {
                     window.onAIOptimizationComplete(finalResult);
@@ -576,6 +618,7 @@ export const useRecording = (modelStatus) => {
     }
     cleanup();
     setIsRecording(false);
+    isRecordingRef.current = false;
     setIsProcessing(false);
     setError(null);
   }, [cleanup, stopPrecogTimer]);

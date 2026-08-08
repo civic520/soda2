@@ -22,7 +22,7 @@ function speakSapi(text) {
     if (_current && !_current.killed) {
       try { _current.kill(); } catch (e) { /* ignore */ }
     }
-    const tmp = path.join(os.tmpdir(), "speakslow_tts.txt");
+    const tmp = path.join(os.tmpdir(), "soda2_tts.txt");
     fs.writeFileSync(tmp, text, "utf8");
     const tmpEsc = tmp.replace(/\\/g, "\\\\");
     const script =

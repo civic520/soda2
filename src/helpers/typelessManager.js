@@ -17,6 +17,15 @@ const TYPELESS_TRIGGER_PRESETS = {
   f10: [UiohookKey.F10],
 };
 
+// AI 優化錄音觸發鍵（與 TypeLess 觸發鍵獨立，可分配不同按鍵避免衝突）
+const AI_OPTIMIZE_TRIGGER_PRESETS = {
+  none: [],
+  altRight: [UiohookKey.AltRight],
+  ctrlRight: [UiohookKey.CtrlRight],
+  f11: [UiohookKey.F11],
+  f12: [UiohookKey.F12],
+};
+
 class TypelessManager {
   constructor(logger = null) {
     this.logger = logger;
@@ -36,12 +45,27 @@ class TypelessManager {
     this.isActive = false;   // toggle 模式：目前是否正在錄音
     this.triggerHeld = false; // 防止長按時的自動重複觸發
     this.lastKeyDownTime = 0; // 上次觸發鍵 keydown 的時間（解「漏接 keyup」卡死用）
+    this.lastToggleTime = 0;  // 上次切換的時間（auto-repeat 不更新此值，用於正確判定新按壓）
+    this._triggerHeldTimer = null; // triggerHeld 自動解鎖計時器（keyup 被吞掉時的保險)
     this._macAxTimer = null;  // Mac：等「輔助使用」授權的輪詢 timer
+    // AI 優化快捷錄音：trigger + 修飾鍵組合
+    this.aiOptimizeMode = false; // 目前是否處於 AI 優化錄音模式
+    this.aiOptimizeModifier = 'shift'; // AI 優化修飾鍵：'shift' | 'ctrl' | 'alt' | 'meta' | null
+    // AI 優化錄音觸發鍵（uiohook，可設定右 Alt/右 Ctrl 等）
+    this.aiOptimizeTriggerKeys = []; // 預設停用
+    this.aiOptimizeRecordingActive = false; // 目前是否正在 AI 優化錄音
+    this._aiOptTriggerHeld = false; // 防止 auto-repeat
+    this._aiOptLastToggleTime = 0; // 上次切換時間
 
     // 回調函數
     this.onStartRecording = null;
     this.onStopRecording = null;
     this.onCancelRecording = null;
+    this.onAiOptimizeEnable = null;
+    this.onAiOptimizeDisable = null;
+    // AI 優化錄音回調（uiohook 觸發路徑）
+    this.onAiOptimizeRecordingStart = null;
+    this.onAiOptimizeRecordingStop = null;
 
     // 綁定事件處理器
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -51,10 +75,12 @@ class TypelessManager {
   /**
    * 設置回調函數
    */
-  setCallbacks({ onStartRecording, onStopRecording, onCancelRecording }) {
+  setCallbacks({ onStartRecording, onStopRecording, onCancelRecording, onAiOptimizeEnable, onAiOptimizeDisable }) {
     this.onStartRecording = onStartRecording;
     this.onStopRecording = onStopRecording;
     this.onCancelRecording = onCancelRecording;
+    this.onAiOptimizeEnable = onAiOptimizeEnable || null;
+    this.onAiOptimizeDisable = onAiOptimizeDisable || null;
     this.safeLog('info', 'TypeLess 回調函數已設置');
   }
 
@@ -86,7 +112,43 @@ class TypelessManager {
       this.triggerHeld = false;
       if (wasRecording) this.safeLog('info', 'TypeLess: 取消錄音 (Esc)');
       if (this.onCancelRecording) this.onCancelRecording();
+      // Esc 取消時，若處於 AI 優化模式則清除
+      if (this.aiOptimizeMode) {
+        this.aiOptimizeMode = false;
+        if (this.onAiOptimizeDisable) this.onAiOptimizeDisable();
+      }
       return;
+    }
+
+    // 快速鍵：在錄音進行中按修飾鍵 → 啟用 AI 優化（不需等待 trigger 鍵）
+    // 解決 Ctrl → 修飾鍵 順序問題：修飾鍵 keydown 不是 trigger key，原本會被 gate 擋掉
+    // toggle 模式用 isActive，hold 模式用 isKeyDown，兩者都要覆蓋
+    if ((this.isActive || this.isKeyDown) && !this.aiOptimizeMode &&
+        this._checkAiOptimizeModifier(event)) {
+      this.aiOptimizeMode = true;
+      this.safeLog('info', 'TypeLess: AI 優化模式啟用');
+      if (this.onAiOptimizeEnable) this.onAiOptimizeEnable();
+    }
+
+    // AI 優化錄音觸發鍵偵測（toggle 模式，與 TypeLess 獨立）
+    if (this.aiOptimizeTriggerKeys.includes(event.keycode)) {
+      // 忽略 auto-repeat（與 TypeLess toggle 相同邏輯）
+      if (this._aiOptTriggerHeld && (Date.now() - this._aiOptLastToggleTime) < 600) return;
+      this._aiOptTriggerHeld = true;
+      this._aiOptLastToggleTime = Date.now();
+
+      if (this.aiOptimizeRecordingActive) {
+        // 正在錄音 → 停止
+        this.aiOptimizeRecordingActive = false;
+        this.safeLog('info', 'AI 優化錄音: 停止');
+        if (this.onAiOptimizeRecordingStop) this.onAiOptimizeRecordingStop();
+      } else {
+        // 未錄音 → 開始
+        this.aiOptimizeRecordingActive = true;
+        this.safeLog('info', 'AI 優化錄音: 開始');
+        if (this.onAiOptimizeRecordingStart) this.onAiOptimizeRecordingStart();
+      }
+      return; // 不再往下傳播到 TypeLess trigger 偵測
     }
 
     if (!this.triggerKeys.includes(event.keycode)) return;
@@ -95,21 +157,48 @@ class TypelessManager {
       // 單擊切換：忽略長按造成的自動重複（keydown 會連續觸發）。
       // 但「靠 keyup 清 triggerHeld」在高負載/錄影時 keyup 會被吞掉，
       // 導致 triggerHeld 永遠卡 true、之後按右 Ctrl 全無反應（真實踩過的雷）。
-      // 解法：自動重複的 keydown 間隔極短（~30ms）；若距離上次 keydown 已超過
-      // 門檻，代表上一次的 keyup 漏接了 → 視為新的一次按下，強制解卡。
+      // 解法：用 lastToggleTime 而非 lastKeyDownTime 來量測間隔。
+      // lastToggleTime 只在「實際切換」時更新，auto-repeat 不更新它。
+      // 因此即使 auto-repeat 的 keydown 連續湧入，gap 仍反映距上次切換的真實時間。
+      // 當 gap >= 600ms 且 triggerHeld = true，表示 keyup 被吞掉 → 強制解卡。
+      // 再加一道保險：triggerHeld 自動解鎖計時器。
+      // 每次 keydown（含 auto-repeat）都會刷新此計時器；800ms 無 keydown
+      // 即自動清除 triggerHeld，確保 keyup 被吞掉時不會永久卡死。
+      // keyup 正常收到時則立即清除並取消計時器。
       const now = Date.now();
-      const gap = now - this.lastKeyDownTime;
+      const gap = now - this.lastToggleTime;
       this.lastKeyDownTime = now;
+      this.safeLog('info', `TypeLess keydown(trigger=${event.keycode}) isActive=${this.isActive} held=${this.triggerHeld} gap=${gap}`);
+      // 保險：每次 keydown（含 auto-repeat）都刷新計時器
+      if (this._triggerHeldTimer) clearTimeout(this._triggerHeldTimer);
+      this._triggerHeldTimer = setTimeout(() => { this.triggerHeld = false; this._triggerHeldTimer = null; }, 800);
       if (this.triggerHeld && gap < 600) return; // 真的是長按自動重複，忽略
       this.triggerHeld = true;
 
+      const wasActive = this.isActive;
       this.isActive = !this.isActive;
+      this.lastToggleTime = now;
+
       if (this.isActive) {
-        this.safeLog('info', 'TypeLess(切換): 開始錄音');
-        if (this.onStartRecording) this.onStartRecording();
+        if (!wasActive) {
+          this.safeLog('info', 'TypeLess(切換): 開始錄音');
+          if (this.onStartRecording) this.onStartRecording();
+          // 偵測修飾鍵：啟用 AI 優化錄音模式
+          if (this._checkAiOptimizeModifier(event) && !this.aiOptimizeMode) {
+            this.aiOptimizeMode = true;
+            this.safeLog('info', 'TypeLess: AI 優化模式啟用');
+            if (this.onAiOptimizeEnable) this.onAiOptimizeEnable();
+          }
+        }
       } else {
         this.safeLog('info', 'TypeLess(切換): 停止錄音');
         if (this.onStopRecording) this.onStopRecording();
+        // 錄音停止時，若處於 AI 優化模式則自動清除
+        if (this.aiOptimizeMode) {
+          this.aiOptimizeMode = false;
+          this.safeLog('info', 'TypeLess: AI 優化模式自動關閉');
+          if (this.onAiOptimizeDisable) this.onAiOptimizeDisable();
+        }
       }
       return;
     }
@@ -120,6 +209,12 @@ class TypelessManager {
         this.isKeyDown = true;
         this.safeLog('info', 'TypeLess: 開始錄音 (keydown)');
         if (this.onStartRecording) this.onStartRecording();
+        // 偵測修飾鍵：啟用 AI 優化錄音模式
+        if (this._checkAiOptimizeModifier(event) && !this.aiOptimizeMode) {
+          this.aiOptimizeMode = true;
+          this.safeLog('info', 'TypeLess: AI 優化模式啟用 (hold)');
+          if (this.onAiOptimizeEnable) this.onAiOptimizeEnable();
+        }
       }
     }
   }
@@ -129,16 +224,30 @@ class TypelessManager {
    */
   handleKeyUp(event) {
     if (!this.isEnabled) return;
+
+    // AI 優化錄音觸發鍵 keyup
+    if (this.aiOptimizeTriggerKeys.includes(event.keycode)) {
+      this._aiOptTriggerHeld = false;
+      return;
+    }
+
     if (!this.triggerKeys.includes(event.keycode)) return;
 
-    // 放開觸發鍵：解除長按鎖定
+    // 放開觸發鍵：解除長按鎖定（並取消自動解鎖計時器；若 keyup 被吞掉，計時器會接手清除）
+    this.safeLog('info', `TypeLess keyup(trigger=${event.keycode})`);
     this.triggerHeld = false;
+    if (this._triggerHeldTimer) { clearTimeout(this._triggerHeldTimer); this._triggerHeldTimer = null; }
 
     // hold 模式才在放開時停止錄音；toggle 模式由再次按下控制
     if (this.mode === 'hold' && this.isKeyDown) {
       this.isKeyDown = false;
       this.safeLog('info', 'TypeLess: 停止錄音 (keyup)');
       if (this.onStopRecording) this.onStopRecording();
+      // hold 模式放開時，若處於 AI 優化模式則清除
+      if (this.aiOptimizeMode) {
+        this.aiOptimizeMode = false;
+        if (this.onAiOptimizeDisable) this.onAiOptimizeDisable();
+      }
     }
   }
 
@@ -228,6 +337,7 @@ class TypelessManager {
       this.isKeyDown = false;
       this.isActive = false;
       this.triggerHeld = false;
+      if (this._triggerHeldTimer) { clearTimeout(this._triggerHeldTimer); this._triggerHeldTimer = null; }
       this.safeLog('info', 'TypeLess 模式已停用');
     } catch (error) {
       this.safeLog('error', 'TypeLess 模式停用失敗', error);
@@ -242,6 +352,31 @@ class TypelessManager {
    */
   syncActiveState(isRecording) {
     this.isActive = !!isRecording;
+  }
+
+  /**
+   * 強制重置所有狀態（緊急用）。由 globalShortcut 急救熱鍵觸發，
+   * 當 uiohook 卡死（keyup/keydown 被吞）時，靠 Electron 的 API 強制
+   * 解鎖 triggerHeld、清除計時器、重置按鍵狀態。
+   */
+  forceReset() {
+    this.isKeyDown = false;
+    this.isActive = false;
+    this.triggerHeld = false;
+    this.lastKeyDownTime = 0;
+    this.lastToggleTime = 0;
+    if (this.aiOptimizeMode) {
+      this.aiOptimizeMode = false;
+      if (this.onAiOptimizeDisable) this.onAiOptimizeDisable();
+    }
+    this.aiOptimizeRecordingActive = false;
+    this._aiOptTriggerHeld = false;
+    this._aiOptLastToggleTime = 0;
+    if (this._triggerHeldTimer) {
+      clearTimeout(this._triggerHeldTimer);
+      this._triggerHeldTimer = null;
+    }
+    this.safeLog('info', 'TypeLess: 強制重置 (emergency reset)');
   }
 
   /**
@@ -270,6 +405,41 @@ class TypelessManager {
     this.isActive = false;
     this.triggerHeld = false;
     this.safeLog('info', `TypeLess 觸發鍵設為「${id}」`, { triggerKeys: keys });
+  }
+
+  /**
+   * 設定 AI 優化快速鍵的修飾鍵
+   * @param {string|null} modifier - 'shift' | 'ctrl' | 'alt' | 'meta' | null
+   */
+  setAiOptimizeModifier(modifier) {
+    this.aiOptimizeModifier = modifier;
+    this.safeLog('info', `TypeLess AI 優化修飾鍵設為「${modifier || '停用'}」`);
+  }
+
+  /**
+   * 設置 AI 優化錄音觸發鍵（uiohook 路徑）
+   * @param {string} triggerId - 'none' | 'altRight' | 'ctrlRight' | 'f11' | 'f12'
+   */
+  setAiOptimizeTrigger(triggerId) {
+    this.aiOptimizeTriggerKeys = AI_OPTIMIZE_TRIGGER_PRESETS[triggerId] || [];
+    this.aiOptimizeRecordingActive = false;
+    this._aiOptTriggerHeld = false;
+    this._aiOptLastToggleTime = 0;
+    this.safeLog('info', `AI 優化錄音觸發鍵設為: ${triggerId || '停用'}`);
+  }
+
+  /**
+   * 檢查事件是否包含 AI 優化修飾鍵
+   */
+  _checkAiOptimizeModifier(event) {
+    if (!this.aiOptimizeModifier) return false;
+    switch (this.aiOptimizeModifier) {
+      case 'shift': return event.shiftKey;
+      case 'ctrl': return event.ctrlKey;
+      case 'alt': return event.altKey;
+      case 'meta': return event.metaKey;
+      default: return false;
+    }
   }
 
   /**
@@ -356,6 +526,10 @@ class TypelessManager {
     this.onStartRecording = null;
     this.onStopRecording = null;
     this.onCancelRecording = null;
+    this.onAiOptimizeRecordingStart = null;
+    this.onAiOptimizeRecordingStop = null;
+    this.aiOptimizeTriggerKeys = [];
+    this.aiOptimizeRecordingActive = false;
   }
 }
 

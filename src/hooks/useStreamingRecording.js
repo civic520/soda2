@@ -26,6 +26,10 @@ export const useStreamingRecording = () => {
   // 串流辨識狀態
   const streamingActiveRef = useRef(false);
 
+  // 取消旗標：stopStreaming 在 startStreaming 非同步初始化途中被叫時，
+  // 設此旗標讓 startStreaming 在 await 回來後自己收手。
+  const startCancelledRef = useRef(false);
+
   // 音頻緩衝區（用於累積足夠的音頻數據）
   const audioBufferRef = useRef([]);
   const sendIntervalRef = useRef(null);
@@ -99,6 +103,7 @@ export const useStreamingRecording = () => {
   const startStreaming = useCallback(async () => {
     try {
       setError(null);
+      startCancelledRef.current = false; // 清除可能的舊取消旗標
       setPartialText('');
       setFullText('');
       setIsInitializing(true);
@@ -133,6 +138,13 @@ export const useStreamingRecording = () => {
           autoGainControl: true
         }
       });
+
+      // 如果在 getUserMedia 途中被 stop，直接放棄
+      if (startCancelledRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        startCancelledRef.current = false;
+        return;
+      }
 
       // 如果之前沒有權限，現在有了，更新狀態
       if (micPermissionRef.current !== 'granted') {
@@ -202,6 +214,13 @@ export const useStreamingRecording = () => {
         if (!startResult.success) {
           throw new Error(startResult.error || t('errors.cannotStartStreamingSession'));
         }
+      }
+
+      // 如果在 streamingStart 途中被 stop，放棄
+      if (startCancelledRef.current) {
+        cleanup();
+        startCancelledRef.current = false;
+        return;
       }
 
       streamingActiveRef.current = true;
@@ -278,7 +297,18 @@ export const useStreamingRecording = () => {
 
   // 停止串流錄音
   const stopStreaming = useCallback(async () => {
-    if (!streamingActiveRef.current) return;
+    // 通知 startStreaming（若仍在非同步初始化中）立刻放棄
+    startCancelledRef.current = true;
+
+    // 同時檢查 isRecording 和 streamingActiveRef；初始化途中 streamingActiveRef 尚未為 true
+    if (!isRecording) return;
+    if (!streamingActiveRef.current) {
+      // 初始化途中被停止：清理資源後直接結束
+      cleanup();
+      setIsRecording(false);
+      setIsProcessing(false);
+      return;
+    }
 
     streamingActiveRef.current = false;
     setIsProcessing(true);
@@ -350,7 +380,7 @@ export const useStreamingRecording = () => {
       setIsRecording(false);
       setIsProcessing(false);
     }
-  }, [cleanup, t]);
+  }, [isRecording, cleanup, t]);
 
   // 取消串流錄音
   const cancelStreaming = useCallback(() => {

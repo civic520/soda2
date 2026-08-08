@@ -5,7 +5,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 // 載入環境變數
 require("dotenv").config();
 
-const { app, globalShortcut, BrowserWindow, ipcMain, Menu } = require("electron");
+const { app, globalShortcut, BrowserWindow, ipcMain, Menu, session } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 
@@ -142,18 +142,51 @@ const environmentManager = new EnvironmentManager();
 const databaseManager = new DatabaseManager();
 const clipboardManager = new ClipboardManager(logger); // 传递logger实例
 const sherpaManager = new SherpaManager(logger); // 传递logger实例
-const hotkeyManager = new HotkeyManager();
+const hotkeyManager = new HotkeyManager(logger);
 const typelessManager = new TypelessManager(logger);
 
 // 初始化数据库
 const dataDirectory = environmentManager.ensureDataDirectory();
 databaseManager.initialize(dataDirectory);
 
+// 連結資料庫設定至模型管理器，並建立預設模型根目錄
+sherpaManager.setDatabaseManager(databaseManager);
+
+// 若當前模型是 whisper 但檔案不完整則降級到 sense_voice
+const currentModel = databaseManager.getSetting('asr_model_type', 'paraformer');
+if (currentModel === 'whisper') {
+  const fs = require('fs');
+  const whisperDir = path.join(__dirname, 'model', 'sherpa-onnx-whisper-small');
+  const tokensFile = path.join(whisperDir, 'small-tokens.txt');
+  if (fs.existsSync(whisperDir) && (!fs.existsSync(tokensFile) || (fs.existsSync(tokensFile) && fs.statSync(tokensFile).size === 0))) {
+    databaseManager.setSetting('asr_model_type', 'sense_voice');
+    logger.info('Whisper 模型不完整，自動降級到 sense_voice');
+  }
+}
+try {
+  const fs = require("fs");
+  const defaultModelDir = path.join(__dirname, "model");
+  if (!fs.existsSync(defaultModelDir)) {
+    fs.mkdirSync(defaultModelDir, { recursive: true });
+    logger.info(`建立預設模型目錄: ${defaultModelDir}`);
+  }
+} catch (e) {
+  logger.warn("建立預設模型目錄失敗:", e.message);
+}
+
+
 // 崩潰救援：若上次錄音中途被砍，把遺留的音訊救回歷史（標「未轉錄」）
 try {
   require("./src/helpers/recovery").recoverOnStartup(databaseManager, logger);
 } catch (e) {
   logger && logger.warn && logger.warn("崩潰救援啟動檢查失敗:", e?.message || e);
+}
+
+// 自動清理過期舊錄音檔
+try {
+  require("./src/helpers/recovery").cleanOldRecordings(databaseManager, logger);
+} catch (e) {
+  logger && logger.warn && logger.warn("自動清理舊錄音檔啟動失敗:", e?.message || e);
 }
 
 // 初始化 windowManager，傳入 databaseManager 以支援設定讀取
@@ -165,6 +198,23 @@ let ipcHandlers = null;
 
 // 主应用启动函数
 async function startApp() {
+  // Content-Security-Policy
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' http://localhost:* ws://localhost:*; " +
+          "img-src 'self' data:; " +
+          "font-src 'self'",
+        ],
+      },
+    });
+  });
+
   // 在 app ready 后初始化 IPC 处理器
   if (!ipcHandlers) {
     ipcHandlers = new IPCHandlers({
@@ -201,7 +251,7 @@ async function startApp() {
   // 开发模式下添加小延迟让Vite正确启动
   if (process.env.NODE_ENV === "development") {
     logger.info('开发模式，等待Vite启动...');
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
   // 确保macOS上dock可见
@@ -223,6 +273,12 @@ async function startApp() {
     logger.warn("Sherpa 在启动时不可用，这不是关键问题", err);
   });
 
+  // 保留策略（建議 1）：開機清掉超過保留天數的舊錄音，避免無限增長 + 減少 SSD 寫入。
+  try {
+    const retentionDays = databaseManager.getSetting('audio_retention_days', 30);
+    sherpaManager.cleanupOldAudio(retentionDays).catch(() => {});
+  } catch (e) { /* 不擋啟動 */ }
+
   // 创建主窗口
   try {
     logger.info('创建主窗口...');
@@ -241,7 +297,57 @@ async function startApp() {
     logger.error("创建控制面板窗口时出错:", error);
   }
 
-  // 设置托盘
+  // 預先建立 TypeLess 錄音指示器視窗（避免第一次按 ALT 時才建立造成的延遲與競爭）
+  windowManager.createTypelessIndicatorWindow().catch(() => {});
+
+  // 緊急重置熱鍵（用 globalShortcut — Electron 內建 API，不吃 keyup 掉落）。
+  // 當 uiohook 因高負載/錄影吞掉 keyup/keydown 時，按 Ctrl+Shift+F9 可直接
+  // 強制重置 TypelessManager 狀態 + 停止錄音 + 隱藏指示器 + 通知渲染層。
+  // 不受 uiohook 異常影響的獨立保險路徑。
+  try {
+    const emergencyResetAccelerator = 'CommandOrControl+Shift+F9';
+    globalShortcut.register(emergencyResetAccelerator, () => {
+      logger.info('緊急重置熱鍵觸發');
+      typelessManager.forceReset();
+      windowManager.hideTypelessIndicator();
+      // 向所有視窗發送緊急重置事件
+      BrowserWindow.getAllWindows().forEach((w) => {
+        if (!w.isDestroyed()) w.webContents.send('emergency-reset');
+      });
+      logger.info('緊急重置完成: forceReset + hideIndicator + broadcast');
+    });
+    logger.info(`緊急重置熱鍵已註冊: ${emergencyResetAccelerator}`);
+  } catch (e) {
+    logger.warn('緊急重置熱鍵註冊失敗:', e.message);
+  }
+
+  // 啟動時預先載入 TypeLess 觸發鍵設定並啟用全域監聽（避開渲染端重複註冊與焦點競爭）
+  try {
+    const triggerId = databaseManager.getSetting('typeless_trigger', 'default');
+    typelessManager.setTriggerById(triggerId);
+    const aiOptTrigger = databaseManager.getSetting('ai_optimize_trigger', 'none');
+    typelessManager.setAiOptimizeTrigger(aiOptTrigger);
+    typelessManager.enable();
+    logger.info(`啟動時已啟用 TypeLess 模式，觸發鍵設為 ${triggerId}，AI 優化錄音觸發鍵設為 ${aiOptTrigger}`);
+  } catch (e) {
+    logger.warn('啟動時啟用 TypeLess 失敗:', e.message);
+  }
+
+  // 同步開機啟動設定到系統中
+  try {
+    const autoStart = databaseManager.getSetting('auto_start', false);
+    const autoStartMinimized = databaseManager.getSetting('auto_start_minimized', true);
+    app.setLoginItemSettings({
+      openAtLogin: !!autoStart,
+      path: process.execPath,
+      args: autoStartMinimized ? ["--hidden"] : []
+    });
+    logger.info("開機自啟動設定同步完成:", { autoStart, autoStartMinimized });
+  } catch (e) {
+    logger.warn("開機自啟動設定同步失敗:", e.message);
+  }
+
+  // 設置托盘
   logger.info('设置系统托盘...');
   trayManager.setWindows(
     windowManager.mainWindow,

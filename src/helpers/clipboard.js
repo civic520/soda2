@@ -173,9 +173,51 @@ class ClipboardManager {
     return this._psSend(`$savedHwnd = [Native.Fg]::GetForegroundWindow()`);
   }
 
+  // macOS：把焦點還原到熱鍵觸發前的 app，再送一串 System Events 按鍵（同步，配合 Fast 方法簽名）。
+  // 用 execFileSync 一次跑完 activate + 按鍵，跟 sendMacOSPaste 同一套 osascript 機制。
+  // 一樣受「輔助使用」權限約束；沒權限會丟例外 → 回 false（呼叫端會顯示提示）。
+  _macFocusKeystroke(osaLines) {
+    if (!osaLines || osaLines.length === 0) return false;
+    try {
+      const activate = this.previousMacForegroundApp
+        ? this.buildMacOSActivateScript(this.previousMacForegroundApp)
+        : "";
+      const body = osaLines
+        .map((l) => `tell application "System Events" to ${l}`)
+        .join("\ndelay 0.03\n");
+      const script = `${activate}\ndelay 0.06\n${body}`;
+      execFileSync("osascript", ["-e", script], { timeout: 3000 });
+      return true;
+    } catch (e) {
+      this.safeLog("⚠️ macOS Fast 按鍵失敗（可能缺輔助使用權限）", e.message);
+      return false;
+    }
+  }
+
+  // 把 Windows SendKeys 語法轉成 macOS System Events 指令序列（^字母 → Cmd+字母）
+  _sendKeysToOsascript(keys) {
+    const lines = [];
+    const special = {
+      ENTER: "keystroke return",
+      DEL: "key code 51",
+      DELETE: "key code 51",
+      BACKSPACE: "key code 51",
+      TAB: "keystroke tab",
+      ESC: "key code 53",
+    };
+    const re = /\^([a-zA-Z])|\{([A-Z]+)\}/g;
+    let m;
+    while ((m = re.exec(keys)) !== null) {
+      if (m[1]) lines.push(`keystroke "${m[1].toLowerCase()}" using command down`);
+      else if (m[2] && special[m[2]]) lines.push(special[m[2]]);
+    }
+    return lines;
+  }
+
   // 快速：還原焦點到先前視窗並貼上（Ctrl+V）
   focusAndPasteFast() {
     if (process.platform === "linux") return this._xdoKeys(["ctrl+v"]);
+    if (process.platform === "darwin") return this._macFocusKeystroke(['keystroke "v" using command down']);
     const ps = this._ensurePsShell();
     if (!ps) return false;
     return this._psSend(
@@ -186,6 +228,7 @@ class ClipboardManager {
   // 快速：還原焦點到先前視窗並複製選取（Ctrl+C）—— 操作模式抓選取用
   focusAndCopyFast() {
     if (process.platform === "linux") return this._xdoKeys(["ctrl+c"]);
+    if (process.platform === "darwin") return this._macFocusKeystroke(['keystroke "c" using command down']);
     const ps = this._ensurePsShell();
     if (!ps) return false;
     return this._psSend(
@@ -197,6 +240,7 @@ class ClipboardManager {
   // keys 為 SendKeys 語法字串（^a=Ctrl+A、^c、^v、{ENTER}、{DELETE} 等）
   focusAndSendKeysFast(keys) {
     if (process.platform === "linux") return this._xdoKeys(this._sendKeysToXdo(keys));
+    if (process.platform === "darwin") return this._macFocusKeystroke(this._sendKeysToOsascript(keys));
     const ps = this._ensurePsShell();
     if (!ps) return false;
     // keys 為內建常數（非使用者輸入），不含單引號，可安全內嵌
@@ -484,17 +528,17 @@ class ClipboardManager {
 
     let dialogMessage;
     if (isStuckPermission) {
-      dialogMessage = `🔒 聲聲慢需要輔助功能權限，但看起來您可能有來自先前版本的舊權限。
+      dialogMessage = `🔒 說打兔需要輔助功能權限，但看起來您可能有來自先前版本的舊權限。
 
-❗ 常見問題：如果您重新構建/重新安裝了聲聲慢，舊權限可能"卡住"並阻止新權限。
+❗ 常見問題：如果您重新構建/重新安裝了說打兔，舊權限可能"卡住"並阻止新權限。
 
 🔧 解決方法：
 1. 打開系統設置 → 隱私與安全性 → 輔助功能
-2. 查找任何舊的"聲聲慢"條目並刪除它們（點擊 - 按鈕）
+2. 查找任何舊的"說打兔"條目並刪除它們（點擊 - 按鈕）
 3. 同時刪除任何顯示"Electron"或名稱不明確的條目
-4. 點擊 + 按鈕並手動添加新的聲聲慢應用
+4. 點擊 + 按鈕並手動添加新的說打兔應用
 5. 確保複選框已啟用
-6. 重啟聲聲慢
+6. 重啟說打兔
 
 ⚠️ 這在開發期間重新構建應用時特別常見。
 
@@ -502,7 +546,7 @@ class ClipboardManager {
 
 您想現在打開系統設置嗎？`;
     } else {
-      dialogMessage = `🔒 聲聲慢需要輔助功能權限才能將文字貼上到其他應用程式中。
+      dialogMessage = `🔒 說打兔需要輔助功能權限才能將文字貼上到其他應用程式中。
 
 📋 當前狀態：剪貼簿複製有效，但貼上（Cmd+V 模擬）失敗。
 
@@ -510,8 +554,8 @@ class ClipboardManager {
 1. 打開系統設置（或較舊 macOS 上的系統偏好設置）
 2. 轉到隱私與安全性 → 輔助功能
 3. 點擊鎖圖標並輸入您的密碼
-4. 將聲聲慢添加到列表中並勾選複選框
-5. 重啟聲聲慢
+4. 將說打兔添加到列表中並勾選複選框
+5. 重啟說打兔
 
 ⚠️ 沒有此權限，聽寫文字將只複製到剪貼簿但不會自動貼上。
 

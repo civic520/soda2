@@ -9,8 +9,8 @@ import { useTranslation } from "../i18n";
 const TypelessIndicator = () => {
   const { t } = useTranslation();
   const [commandMode, setCommandMode] = useState(false);
+  const [cloudAsrActive, setCloudAsrActive] = useState(false);
 
-  // 操作模式狀態由主行程廣播（主視窗 toggle / 指示器顯示時推送）
   useEffect(() => {
     let unsub = null;
     window.electronAPI
@@ -21,16 +21,44 @@ const TypelessIndicator = () => {
     return () => { if (typeof unsub === "function") unsub(); };
   }, []);
 
+  // 雲端 ASR 狀態 — 從 cloud_asr_settings 判斷
+  useEffect(() => {
+    const checkCloudAsr = async () => {
+      try {
+        const raw = await window.electronAPI?.getSetting?.('cloud_asr_settings', null);
+        if (raw) {
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          setCloudAsrActive(parsed?.enabled === true);
+        } else {
+          setCloudAsrActive(false);
+        }
+      } catch { setCloudAsrActive(false); }
+    };
+    checkCloudAsr();
+    const unsub = window.electronAPI?.onSettingChanged?.((data) => {
+      if (data?.key === 'cloud_asr_settings') {
+        try {
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          setCloudAsrActive(parsed?.enabled === true);
+        } catch { setCloudAsrActive(false); }
+      }
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, []);
+
   return (
     <div className="w-full h-full flex items-center justify-center">
       <div
         className={`pill-bounce backdrop-blur-sm rounded-full px-5 py-2 flex items-center gap-2.5 ${
           commandMode
-            ? "bg-sky-400 border border-sky-300/60"
-            : "bg-red-500 border border-red-400/60"
+            ? 'pill-command'
+            : cloudAsrActive
+              ? 'pill-cloud'
+              : 'pill-recording'
         }`}
-      >
-        {/* 靜止白點（不跳動）*/}
+        >
+          {cloudAsrActive && (<><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /></>)}
+          {/* 靜止白點（不跳動）*/}
         <div className="w-3 h-3 bg-white rounded-full" />
 
         {/* 文字 */}

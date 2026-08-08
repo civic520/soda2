@@ -1,4 +1,4 @@
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const https = require("https");
 const path = require("path");
@@ -22,6 +22,39 @@ const STREAMING_MODEL_CONFIG = {
   ],
 };
 
+const MODEL_CONFIGS = {
+  paraformer: {
+    name: "sherpa-onnx-paraformer-zh-small-2024-03-09",
+    expected_size: 80 * 1024 * 1024,
+    required_files: ["model.int8.onnx", "tokens.txt"],
+    url: "https://huggingface.co/csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09",
+  },
+  sense_voice: {
+    name: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+    expected_size: 330 * 1024 * 1024,
+    required_files: ["model.int8.onnx", "tokens.txt"],
+    url: "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+  },
+  whisper: {
+    name: "sherpa-onnx-whisper-small",
+    expected_size: 200 * 1024 * 1024,
+    required_files: ["small-encoder.int8.onnx", "small-decoder.int8.onnx", "small-tokens.txt"],
+    url: "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small",
+  },
+  qwen3_asr: {
+    name: "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+    expected_size: 982 * 1024 * 1024,
+    required_files: ["encoder.int8.onnx", "decoder.int8.onnx", "conv_frontend.onnx", "tokenizer/vocab.json"],
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
+  },
+  breeze_asr_25: {
+    name: "Breeze-ASR-25-onnx-250806",
+    expected_size: 1777 * 1024 * 1024,
+    required_files: ["breeze-asr-25-half-encoder.int8.onnx", "breeze-asr-25-half-decoder.int8.onnx", "breeze-asr-25-half-tokens.txt"],
+    url: "https://huggingface.co/MediaTek-Research/Breeze-ASR-25-onnx-250806",
+  },
+};
+
 class SherpaManager {
   constructor(logger = null, options = {}) {
     this.logger = logger || console;
@@ -38,14 +71,18 @@ class SherpaManager {
     this.serverProcess = null;
     this.serverReady = false;
     this.modelsDownloaded = null;
-
-    // Sherpa-ONNX 模型配置（比 FunASR 簡單得多）
-    this.modelConfig = {
-      name: "sherpa-onnx-paraformer-zh-2023-09-14",
-      expected_size: 223 * 1024 * 1024, // 約 223MB
-      required_files: ["model.int8.onnx", "tokens.txt"],
-    };
+    this.databaseManager = null;
+    // 串流模型配置（與主要 ASR 模型分開管理）
     this.streamingModelConfig = STREAMING_MODEL_CONFIG;
+  }
+
+  setDatabaseManager(databaseManager) {
+    this.databaseManager = databaseManager;
+  }
+
+  getModelConfig(modelType = null) {
+    const activeType = modelType || (this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer");
+    return MODEL_CONFIGS[activeType] || MODEL_CONFIGS.paraformer;
   }
 
   getSherpaServerPath() {
@@ -66,11 +103,6 @@ class SherpaManager {
   }
 
   getBundledServerExe() {
-    // 打包後的 PyInstaller 後端（resources/sherpa-backend/sherpa_server[.exe]）。
-    // 開發時這個路徑不存在 → 自動退回用 Python 跑 sherpa_server.py。
-    // （Windows = sherpa_server.exe；macOS / Linux = sherpa_server。舊版在非 win32
-    //  直接回 null，導致 Mac/Linux 打包版永不使用 bundled 後端 → 卡在「模型載入中」。
-    //  by webeasyplay PR #3）
     if (!process.resourcesPath) return null;
     const executableName = process.platform === "win32" ? "sherpa_server.exe" : "sherpa_server";
     return path.join(
@@ -80,43 +112,62 @@ class SherpaManager {
     );
   }
 
-  // Python 解析（嵌入式/系統 Python 尋找、環境變數）抽至 pythonResolver.js；
-  // 保留同名委派讓內部呼叫點不變。
   getEmbeddedPythonPath() { return this.pythonResolver.getEmbeddedPythonPath(); }
   setupIsolatedEnvironment() { return this.pythonResolver.setupIsolatedEnvironment(); }
   buildPythonEnvironment() { return this.pythonResolver.buildPythonEnvironment(); }
   findPythonExecutable() { return this.pythonResolver.findPythonExecutable(); }
 
-  getModelCachePath() {
-    // Sherpa-ONNX 模型路徑（依優先序）
-    const name = this.modelConfig.name;
+  getModelCachePath(modelType = null, customPath = null) {
+    const config = this.getModelConfig(modelType);
+    const name = config.name;
+    // 開發模式用專案根目錄，打包版用 userData（asar 內不可寫）
+    const isPackaged = !!(process.env.NODE_ENV !== "development" && require("electron").app?.isPackaged);
+    const defaultModelDir = isPackaged
+      ? path.join(this.getUserDataPath(), "models", name)
+      : path.join(__dirname, "..", "..", "model", name);
+
+    // 1. 若模型已存在於預設目錄，永遠留在原處（不因自訂路徑而搬移）
+    if (fs.existsSync(defaultModelDir)) {
+      return defaultModelDir;
+    }
+
+    // 2. 預設目錄沒有 → 檢查自訂路徑
+    let customDir = customPath;
+    if (!customDir && this.databaseManager) {
+      customDir = this.databaseManager.getSetting("custom_model_dir", "");
+    }
+    if (customDir) {
+      const customModelDir = path.join(customDir, name);
+      if (fs.existsSync(customModelDir)) {
+        return customModelDir;
+      }
+    }
+
+    // 3. 相容性後備路徑（打包內建的模型目錄）
     const candidates = [];
-    // 打包版：模型隨安裝檔放在 resources/sherpa-backend/poc-sherpa
     if (process.resourcesPath) {
       candidates.push(
         path.join(process.resourcesPath, "sherpa-backend", "poc-sherpa", name)
       );
     }
-    // 首次下載的位置：userData/models/poc-sherpa
     try {
       const userData = require("electron").app.getPath("userData");
       candidates.push(path.join(userData, "models", "poc-sherpa", name));
-    } catch (e) {
-      /* 非 Electron 環境忽略 */
-    }
-    // 開發 / 後備：項目內 poc-sherpa、使用者快取
+    } catch (e) { /* ignore */ }
     candidates.push(path.join(__dirname, "..", "..", "poc-sherpa", name));
     candidates.push(path.join(os.homedir(), ".cache", "sherpa-onnx", name));
 
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {
-        this.logger.info && this.logger.info("找到模型緩存路徑:", candidate);
         return candidate;
       }
     }
 
-    // 默認返回 poc-sherpa 路徑（可能需要下載）
-    return path.join(__dirname, "..", "..", "poc-sherpa", name);
+    // 4. 模型尚未下載 → 回傳目標路徑（自訂優先，否則預設）
+    if (customDir) {
+      return path.join(customDir, name);
+    }
+    return defaultModelDir;
   }
 
   getUserDataPath() {
@@ -305,27 +356,26 @@ class SherpaManager {
     });
   }
 
-  async checkModelFiles() {
-    /**
-     * 檢查模型文件是否存在
-     */
+  async checkModelFiles(modelType = null, customPath = null) {
     const now = Date.now();
-
     if (
       globalModelCheckCache &&
       now - globalModelCheckTime < GLOBAL_CACHE_TIME &&
-      !this.serverReady
+      !this.serverReady &&
+      !modelType &&
+      !customPath
     ) {
       return globalModelCheckCache;
     }
 
     try {
-      const modelPath = this.getModelCachePath();
-      this.logger.info && this.logger.info("檢查模型路徑:", modelPath);
+      const activeType = modelType || (this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer");
+      const config = this.getModelConfig(activeType);
+      const modelPath = this.getModelCachePath(activeType, customPath);
+      this.logger.info && this.logger.info(`檢查模型 ${activeType} 路徑:`, modelPath);
 
       if (!fs.existsSync(modelPath)) {
         this.logger.info && this.logger.info("模型目錄不存在");
-        this.modelsDownloaded = false;
         const result = {
           success: true,
           models_downloaded: false,
@@ -335,64 +385,70 @@ class SherpaManager {
             exists: false,
           },
         };
-
-        globalModelCheckCache = result;
-        globalModelCheckTime = now;
+        if (!modelType && !customPath) {
+          this.modelsDownloaded = false;
+          globalModelCheckCache = result;
+          globalModelCheckTime = now;
+        }
         return result;
       }
 
-      // 檢查必要的文件
       const missingFiles = [];
-      for (const file of this.modelConfig.required_files) {
+      for (const file of config.required_files) {
         const filePath = path.join(modelPath, file);
-        if (!fs.existsSync(filePath)) {
+        const sz = this._getExistingFileSize(filePath);
+        if (sz <= 0) {
           missingFiles.push(file);
         }
       }
 
       const allDownloaded = missingFiles.length === 0;
-      this.modelsDownloaded = allDownloaded;
-
-      this.logger.info &&
-        this.logger.info("模型檢查完成:", {
-          allDownloaded,
-          missingFiles,
-          modelPath,
-        });
-
+      // 檢查模型是否為安裝包內建：
+      // - 生產模式：在 process.resourcesPath/sherpa-backend/poc-sherpa/ 下
+      // - 開發模式：在專案根目錄 poc-sherpa/ 下（extraResources 打包的模型）
+      const isBundled = !!(
+        (process.resourcesPath && modelPath.startsWith(path.join(process.resourcesPath, "sherpa-backend"))) ||
+        (modelPath.includes(`${path.sep}poc-sherpa${path.sep}`))
+      );
       const result = {
         success: true,
         models_downloaded: allDownloaded,
         missing_models: missingFiles.length > 0 ? ["asr"] : [],
+        directory_exists: fs.existsSync(modelPath),
+        is_bundled: isBundled,
         details: {
           model_path: modelPath,
           missing_files: missingFiles,
         },
       };
 
-      globalModelCheckCache = result;
-      globalModelCheckTime = now;
+      if (!modelType && !customPath) {
+        this.modelsDownloaded = allDownloaded;
+        globalModelCheckCache = result;
+        globalModelCheckTime = now;
+      }
       return result;
     } catch (error) {
       this.logger.error && this.logger.error("檢查模型文件失敗:", error);
-      this.modelsDownloaded = false;
-      return {
+      const result = {
         success: false,
         error: error.message,
         models_downloaded: false,
         missing_models: ["asr"],
         details: {},
       };
+      if (!modelType && !customPath) {
+        this.modelsDownloaded = false;
+      }
+      return result;
     }
   }
 
   async getDownloadProgress() {
-    /**
-     * 獲取模型下載進度
-     * Sherpa-ONNX 模型較小，通常一次性下載，這裡簡化處理
-     */
     try {
-      const modelPath = this.getModelCachePath();
+      const activeType = this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
+      const config = this.getModelConfig(activeType);
+      const modelPath = this.getModelCachePath(activeType);
 
       if (!fs.existsSync(modelPath)) {
         return {
@@ -402,15 +458,15 @@ class SherpaManager {
             asr: {
               progress: 0,
               downloaded: 0,
-              total: this.modelConfig.expected_size,
+              total: config.expected_size,
             },
           },
         };
       }
 
-      // 檢查模型文件大小
-      const modelFile = path.join(modelPath, "model.int8.onnx");
       let fileSize = 0;
+      const mainFile = config.required_files[0];
+      const modelFile = path.join(modelPath, mainFile);
       if (fs.existsSync(modelFile)) {
         const stats = fs.statSync(modelFile);
         fileSize = stats.size;
@@ -418,7 +474,7 @@ class SherpaManager {
 
       const progress = Math.min(
         100,
-        (fileSize / this.modelConfig.expected_size) * 100
+        (fileSize / config.expected_size) * 100
       );
 
       return {
@@ -428,7 +484,7 @@ class SherpaManager {
           asr: {
             progress: Math.round(progress * 10) / 10,
             downloaded: fileSize,
-            total: this.modelConfig.expected_size,
+            total: config.expected_size,
           },
         },
       };
@@ -444,46 +500,384 @@ class SherpaManager {
   }
 
   async downloadModels(progressCallback = null) {
-    /**
-     * 下載 Sherpa-ONNX 模型
-     * 模型較小（約 223MB），從 HuggingFace 下載
-     */
     try {
-      this.logger.info && this.logger.info("開始下載 Sherpa-ONNX 模型...");
+      const activeType = this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
+      const config = this.getModelConfig(activeType);
+      const targetPath = this.getModelCachePath(activeType);
 
-      const checkResult = await this.checkModelFiles();
+      this.logger.info && this.logger.info(`開始下載 ${activeType} 模型...`);
+
+      const checkResult = await this.checkModelFiles(activeType);
       if (checkResult.models_downloaded) {
         this.logger.info && this.logger.info("模型已存在，無需下載");
         return { success: true, message: "模型已存在，無需下載" };
       }
 
+      // 清理殘留檔案：先逐檔刪除，若仍殘留（如 Windows ACL 損毀）則 rename 目錄
+      if (fs.existsSync(targetPath)) {
+        this._removeDirectoryRecursive(targetPath);
+        try {
+          if (fs.readdirSync(targetPath).length > 0) {
+            const oldDir = targetPath + '.bak.' + Date.now();
+            fs.renameSync(targetPath, oldDir);
+            this.logger.info && this.logger.info(`無法刪除的檔案已搬移至: ${oldDir}`);
+          }
+        } catch (_) {
+          // readdir 也失敗時嘗試 rename
+          const oldDir = targetPath + '.bak.' + Date.now();
+          try {
+            fs.renameSync(targetPath, oldDir);
+          } catch (e2) {
+            this.logger.warn && this.logger.warn(`無法清理模型目錄: ${e2.message}`);
+          }
+        }
+      }
+      if (!fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath, { recursive: true });
+      }
+
+      const https = require("https");
+      
+      const downloadFileWithProgress = (url, dest, onProgress) => {
+        return new Promise((resolve, reject) => {
+          const file = fs.createWriteStream(dest);
+          let downloadedBytes = 0;
+          let totalBytes = 0;
+
+          const request = https.get(url, (response) => {
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+              const redirectUrl = response.headers.location.startsWith("http")
+                ? response.headers.location
+                : new URL(response.headers.location, url).href;
+              downloadFileWithProgress(redirectUrl, dest, onProgress)
+                .then(resolve)
+                .catch(reject);
+              return;
+            }
+
+            if (response.statusCode !== 200) {
+              reject(new Error(`Failed to download file: ${response.statusCode}`));
+              return;
+            }
+
+            totalBytes = parseInt(response.headers["content-length"] || "0", 10);
+            
+            response.on("data", (chunk) => {
+              downloadedBytes += chunk.length;
+              file.write(chunk);
+              if (totalBytes > 0 && onProgress) {
+                onProgress(downloadedBytes, totalBytes);
+              }
+            });
+
+            response.on("end", () => {
+              file.end();
+            });
+          });
+
+          file.on("finish", () => {
+            resolve();
+          });
+
+          file.on("error", (err) => {
+            fs.unlink(dest, () => {});
+            reject(err);
+          });
+
+          request.on("error", (err) => {
+            fs.unlink(dest, () => {});
+            reject(err);
+          });
+        });
+      };
+
+      if (activeType === "qwen3_asr") {
+        const tarUrl = config.url;
+        const tempTarPath = path.join(os.tmpdir(), "qwen3_model.tar.bz2");
+        
+        if (progressCallback) {
+          progressCallback({
+            stage: "downloading",
+            model: "asr",
+            progress: 0,
+            overall_progress: 0,
+          });
+        }
+
+        this.logger.info && this.logger.info(`正在下載 Qwen3 壓縮檔: ${tarUrl}`);
+        await downloadFileWithProgress(tarUrl, tempTarPath, (downloaded, total) => {
+          const pct = Math.round((downloaded / total) * 100);
+          if (progressCallback) {
+            progressCallback({
+              stage: "downloading",
+              model: "asr",
+              progress: pct,
+              overall_progress: pct,
+            });
+          }
+        });
+
+        this.logger.info && this.logger.info("壓縮檔下載完成，正在解壓縮...");
+        if (progressCallback) {
+          progressCallback({
+            stage: "extracting",
+            model: "asr",
+            progress: 100,
+            overall_progress: 100,
+          });
+        }
+
+        const parentDir = path.dirname(targetPath);
+        
+        try {
+          execSync(`tar -xf "${tempTarPath}" -C "${parentDir}"`);
+          this.logger.info && this.logger.info("解壓縮完成！");
+          this._forceDeletePath(tempTarPath);
+        } catch (e) {
+          this.logger.error && this.logger.error("解壓縮失敗:", e);
+          this._forceDeletePath(tempTarPath);
+          return { success: false, error: "解壓縮失敗: " + e.message };
+        }
+      } else {
+        const repo = config.url.replace("https://huggingface.co/", "");
+        const filesToDownload = config.required_files;
+        let overallTotal = config.expected_size;
+        let overallDownloaded = 0;
+
+        for (const f of filesToDownload) {
+          const p = path.join(targetPath, f);
+          const sz = this._getExistingFileSize(p);
+          if (sz > 0) {
+            overallTotal += sz;
+          }
+        }
+
+        for (let i = 0; i < filesToDownload.length; i++) {
+          const filename = filesToDownload[i];
+          const fileDest = path.join(targetPath, filename);
+
+          const existingSize = this._getExistingFileSize(fileDest);
+          if (existingSize > 0) {
+            this.logger.info && this.logger.info(`檔案已存在，跳過 ${i + 1}/${filesToDownload.length}: ${filename}`);
+            overallDownloaded += existingSize;
+            continue;
+          }
+
+          const downloadUrl = `https://hf-mirror.com/${repo}/resolve/main/${filename}`;
+          this.logger.info && this.logger.info(`正在下載檔案 ${i + 1}/${filesToDownload.length}: ${filename}`);
+
+          await downloadFileWithProgress(downloadUrl, fileDest, (downloaded, total) => {
+            const currentOverall = overallDownloaded + downloaded;
+            const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
+            if (progressCallback) {
+              progressCallback({
+                stage: "downloading",
+                model: "asr",
+                progress: pct,
+                overall_progress: pct,
+              });
+            }
+          }).catch(async (err) => {
+            this.logger.warn && this.logger.warn(`鏡像下載失敗，回退至官方 HF 來源...: ${err.message}`);
+            const fallbackUrl = `https://huggingface.co/${repo}/resolve/main/${filename}`;
+            await downloadFileWithProgress(fallbackUrl, fileDest, (downloaded, total) => {
+              const currentOverall = overallDownloaded + downloaded;
+              const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
+              if (progressCallback) {
+                progressCallback({
+                  stage: "downloading",
+                  model: "asr",
+                  progress: pct,
+                  overall_progress: pct,
+                });
+              }
+            });
+          });
+
+          const postSize = this._getExistingFileSize(fileDest);
+          if (postSize === 0) {
+            this._forceDeletePath(fileDest);
+            throw new Error(`下載的檔案 ${filename} 為空（0 bytes），下載可能失敗`);
+          }
+          overallDownloaded += postSize;
+        }
+      }
+
       if (progressCallback) {
         progressCallback({
-          stage: "downloading",
+          stage: "finished",
           model: "asr",
-          progress: 0,
-          overall_progress: 0,
+          progress: 100,
+          overall_progress: 100,
         });
       }
 
-      // 下載邏輯：使用 huggingface-cli 或直接下載
-      // 這裡簡化為提示用戶手動下載
-      const downloadUrl =
-        "https://huggingface.co/csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14";
-
-      this.logger.info && this.logger.info("請從以下地址下載模型:", downloadUrl);
-
-      return {
-        success: false,
-        message: `請手動下載模型: ${downloadUrl}`,
-        download_url: downloadUrl,
-        target_path: this.getModelCachePath(),
-      };
+      this._clearModelCache();
+      return { success: true };
     } catch (error) {
       this.logger.error && this.logger.error("模型下載失敗:", error);
-      throw error;
+      return { success: false, error: error.message };
     }
   }
+
+  async copyModelFiles(modelType, sourcePath, destPath) {
+    try {
+      this.logger.info && this.logger.info(`準備從 ${sourcePath} 複製 ${modelType} 模型到 ${destPath}`);
+      if (!fs.existsSync(sourcePath)) {
+        return { success: false, error: "來源路徑不存在" };
+      }
+      if (!fs.existsSync(destPath)) {
+        fs.mkdirSync(destPath, { recursive: true });
+      }
+
+      // 遞迴複製資料夾
+      const copyRecursiveSync = (src, dest) => {
+        const exists = fs.existsSync(src);
+        const stats = exists && fs.statSync(src);
+        const isDirectory = exists && stats.isDirectory();
+        if (isDirectory) {
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+          }
+          fs.readdirSync(src).forEach((childItemName) => {
+            copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+          });
+        } else {
+          fs.copyFileSync(src, dest);
+        }
+      };
+
+      copyRecursiveSync(sourcePath, destPath);
+      this.logger.info && this.logger.info("複製模型完成");
+      this._clearModelCache();
+      return { success: true };
+    } catch (e) {
+      this.logger.error && this.logger.error("複製模型失敗:", e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  async deleteModelFiles(modelType, customPath = null) {
+    try {
+      const modelPath = this.getModelCachePath(modelType, customPath);
+      this.logger.info && this.logger.info(`刪除模型檔案: ${modelPath}`);
+      if (fs.existsSync(modelPath)) {
+        // Windows 上 rename 僅更新目錄項，即使目錄內有 ACL 損毀的檔案也能成功
+        const backupPath = modelPath + '.deleted.' + Date.now();
+        try {
+          fs.renameSync(modelPath, backupPath);
+        } catch (renameErr) {
+          // rename 失敗（跨磁碟等情況），退回逐檔刪除
+          this.logger.warn && this.logger.warn(`rename 失敗，退回逐檔刪除: ${renameErr.message}`);
+          this._removeDirectoryRecursive(modelPath);
+          this.logger.info && this.logger.info("模型檔案刪除完成");
+          this._clearModelCache();
+          return { success: true };
+        }
+        // 背景清理備份（不阻塞）
+        setTimeout(() => {
+          this._removeDirectoryRecursive(backupPath);
+        }, 100);
+        this.logger.info && this.logger.info("模型檔案已搬移，背景清理中");
+      }
+      this._clearModelCache();
+      return { success: true };
+    } catch (e) {
+      this.logger.error && this.logger.error("刪除模型檔案失敗:", e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  _removeDirectoryRecursive(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dirPath);
+    } catch (e) {
+      this.logger.warn && this.logger.warn(`無法讀取目錄 ${dirPath}: ${e.message}`);
+      this._forceDeletePath(dirPath);
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      try {
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isDirectory()) {
+          this._removeDirectoryRecursive(fullPath);
+        } else {
+          this._forceDeletePath(fullPath);
+        }
+      } catch (e) {
+        if (e.code === 'EPERM') {
+          this.logger.warn && this.logger.warn(`無法存取 ${fullPath}，嘗試強制刪除`);
+          this._forceDeletePath(fullPath);
+        } else {
+          this.logger.warn && this.logger.warn(`無法處理 ${fullPath}: ${e.message}`);
+        }
+      }
+    }
+    try {
+      fs.rmdirSync(dirPath);
+    } catch (e) {
+      if (e.code === 'ENOENT') return;
+      this.logger.warn && this.logger.warn(`無法刪除目錄 ${dirPath}: ${e.message}`);
+    }
+  }
+
+  _getExistingFileSize(filePath) {
+    try {
+      if (!fs.existsSync(filePath)) {
+        // existsSync may return false due to EPERM — try to clean up stale file
+        this._forceDeletePath(filePath);
+        return 0;
+      }
+      return fs.statSync(filePath).size;
+    } catch (e) {
+      if (e.code === 'EPERM') {
+        this.logger.warn && this.logger.warn(`檔案權限異常，嘗試強制清除: ${filePath}`);
+        this._forceDeletePath(filePath);
+        return 0;
+      }
+      throw e;
+    }
+  }
+
+  _forceDeletePath(filePath) {
+    try {
+      fs.unlinkSync(filePath);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM') {
+        this.logger.warn && this.logger.warn(`無法刪除 ${filePath}: ${e.message}`);
+        return;
+      }
+    }
+    try {
+      fs.chmodSync(filePath, 0o666);
+      fs.unlinkSync(filePath);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM') {
+        this.logger.warn && this.logger.warn(`無法刪除 ${filePath}: ${e.message}`);
+        return;
+      }
+    }
+    try {
+      execSync(`attrib -R "${filePath}"`, { timeout: 5000 });
+      execSync(`del /F /Q /A "${filePath}"`, { timeout: 5000 });
+      return;
+    } catch (e) {
+      this.logger.warn && this.logger.warn(`del 失敗，嘗試 takeown+icacls: ${e.message}`);
+    }
+    try {
+      execSync(`takeown /F "${filePath}"`, { timeout: 5000 });
+      execSync(`icacls "${filePath}" /grant "Everyone:(F)"`, { timeout: 5000 });
+      execSync(`del /F /Q /A "${filePath}"`, { timeout: 5000 });
+    } catch (e) {
+      this.logger.warn && this.logger.warn(`無法強制刪除 ${filePath}: ${e.message}`);
+    }
+  }
+
 
   async restartServer() {
     /**
@@ -615,11 +1009,13 @@ class SherpaManager {
       const pythonEnv = this.buildPythonEnvironment();
 
       return new Promise((resolve) => {
-        const modelPath = this.getModelCachePath();
+        const modelType = this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
+        const modelPath = this.getModelCachePath(modelType);
 
         this.serverProcess = spawn(
           command,
-          [...baseArgs, "--model-dir", modelPath],
+          [...baseArgs, "--model-dir", modelPath, "--model-type", modelType],
+
           {
             stdio: ["pipe", "pipe", "pipe"],
             windowsHide: true,
@@ -672,23 +1068,31 @@ class SherpaManager {
             this.logger.error("Sherpa 服務器錯誤輸出", { errorOutput });
         });
 
-        this.serverProcess.on("close", (code) => {
+        // 捕獲本進程引用，避免重啟時舊進程的 close handler 清掉新進程
+        const proc = this.serverProcess;
+
+        proc.on("close", (code) => {
           this.logger.warn &&
             this.logger.warn("Sherpa 服務器進程退出", { code });
-          this.serverProcess = null;
-          this.serverReady = false;
-          this.modelsInitialized = false;
+          // 只有當退出的是「目前」進程時才重置（防止舊進程的 close 覆蓋新進程）
+          if (this.serverProcess === proc) {
+            this.serverProcess = null;
+            this.serverReady = false;
+            this.modelsInitialized = false;
+          }
 
           if (!initResponseReceived) {
             resolve();
           }
         });
 
-        this.serverProcess.on("error", (error) => {
+        proc.on("error", (error) => {
           this.logger.error &&
             this.logger.error("Sherpa 服務器進程錯誤", error);
-          this.serverProcess = null;
-          this.serverReady = false;
+          if (this.serverProcess === proc) {
+            this.serverProcess = null;
+            this.serverReady = false;
+          }
 
           if (!initResponseReceived) {
             resolve();
@@ -766,15 +1170,30 @@ class SherpaManager {
 
   async _stopSherpaServer() {
     if (this.serverProcess) {
+      const proc = this.serverProcess;
       try {
         await this._sendServerCommand({ action: "exit" });
       } catch (error) {
-        this.serverProcess.kill();
+        proc.kill();
       }
 
-      this.serverProcess = null;
-      this.serverReady = false;
-      this.modelsInitialized = false;
+      // 等待進程完全退出，確保釋放模型檔案鎖
+      await new Promise((resolve) => {
+        const exitHandler = () => resolve();
+        proc.on('exit', exitHandler);
+        proc.on('error', exitHandler);
+        setTimeout(() => {
+          proc.removeListener('exit', exitHandler);
+          proc.removeListener('error', exitHandler);
+          resolve();
+        }, 5000);
+      });
+
+      if (this.serverProcess === proc) {
+        this.serverProcess = null;
+        this.serverReady = false;
+        this.modelsInitialized = false;
+      }
     }
   }
 
@@ -853,6 +1272,44 @@ class SherpaManager {
   }
 
   async transcribeAudio(audioBlob, options = {}) {
+    // 讀取雲端 ASR 設定
+    let cloudAsrEnabled = false;
+    let cloudAsrSettings = null;
+    if (this.databaseManager) {
+      cloudAsrSettings = this.databaseManager.getSetting("cloud_asr_settings", null);
+      if (cloudAsrSettings && cloudAsrSettings.enabled) {
+        cloudAsrEnabled = true;
+      }
+    }
+
+    if (cloudAsrEnabled) {
+      this.logger.info && this.logger.info("使用雲端服務 ASR 進行轉錄");
+      const CloudAsrClient = require("./cloudAsrClient");
+      const transcribedText = await CloudAsrClient.transcribe(cloudAsrSettings, audioBlob);
+      
+      const tempAudioPath = await this.createTempAudioFile(audioBlob);
+      let persistedAudioPath = null;
+      const saveAudioFiles = this.databaseManager
+        ? this.databaseManager.getSetting("save_audio", this.databaseManager.getSetting("save_audio_files", true)) !== false
+        : true;
+      if ((options && (options.no_persist || options.save_audio === false)) || !saveAudioFiles) {
+        this.cleanupTempFile(tempAudioPath).catch(() => {});
+      } else {
+        persistedAudioPath = this._persistAudioInBackground(tempAudioPath);
+      }
+
+      return {
+        success: true,
+        text: transcribedText.trim(),
+        segments: null,
+        raw_text: transcribedText,
+        confidence: 0.99,
+        language: "zh-CN",
+        duration: 0,
+        audio_path: persistedAudioPath,
+      };
+    }
+
     const status = await this.checkSherpaInstallation();
     if (!status.installed) {
       throw new Error("Sherpa-ONNX 未安裝。請先安裝 Sherpa-ONNX。");
@@ -886,8 +1343,13 @@ class SherpaManager {
       // 路徑先定好、複製放背景做（不擋住結果回傳 → 貼上更快）；
       // 複製完成後才刪暫存檔。
       // 檔案轉錄（逐字稿/SRT）逐段呼叫，no_persist 時不存錄音、只清暫存檔。
+      // save_audio === false：使用者關掉「保存錄音檔」→ 不寫磁碟(省 SSD、不留存)，
+      // 只清暫存;這筆就沒有 audio_path(之後不能重新辨識,但那是使用者的選擇)。
       let persistedAudioPath = null;
-      if (options && options.no_persist) {
+      const saveAudioFiles = this.databaseManager
+        ? this.databaseManager.getSetting("save_audio", this.databaseManager.getSetting("save_audio_files", true)) !== false
+        : true;
+      if ((options && (options.no_persist || options.save_audio === false)) || !saveAudioFiles) {
         this.cleanupTempFile(tempAudioPath).catch(() => {});
       } else {
         persistedAudioPath = this._persistAudioInBackground(tempAudioPath);
@@ -929,6 +1391,36 @@ class SherpaManager {
     } catch (e) {
       this.cleanupTempFile(tempAudioPath).catch(() => {});
       return null;
+    }
+  }
+
+  // 保留策略（建議 1）：刪掉 audio/ 裡超過 retentionDays 天的錄音檔，避免無限增長。
+  // retentionDays <= 0 視為「永久保留」。被刪檔的歷史紀錄仍在,只是「重新辨識」會
+  // 提示檔案不存在(既有的優雅處理)。開機時呼叫一次。
+  async cleanupOldAudio(retentionDays) {
+    try {
+      const days = Number(retentionDays);
+      if (!days || days <= 0) return { removed: 0 };
+      const userDataPath = require("electron").app.getPath("userData");
+      const audioDir = path.join(userDataPath, "audio");
+      if (!fs.existsSync(audioDir)) return { removed: 0 };
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      const files = await fs.promises.readdir(audioDir);
+      let removed = 0;
+      for (const f of files) {
+        if (!f.toLowerCase().endsWith(".wav")) continue;
+        const fp = path.join(audioDir, f);
+        const st = await fs.promises.stat(fp).catch(() => null);
+        if (st && st.mtimeMs < cutoff) {
+          await fs.promises.unlink(fp).catch(() => {});
+          removed++;
+        }
+      }
+      if (removed && this.logger?.info) this.logger.info(`保留策略：清掉 ${removed} 個超過 ${days} 天的錄音檔`);
+      return { removed };
+    } catch (e) {
+      this.logger?.warn && this.logger.warn("清理舊錄音失敗:", e?.message || e);
+      return { removed: 0, error: e?.message };
     }
   }
 

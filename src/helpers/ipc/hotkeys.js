@@ -5,6 +5,9 @@ module.exports = function register(ctx) {
   // 热键管理 - 添加发送者跟踪机制
   ctx.hotkeyRegisteredSenders = new Set(); // 跟踪已注册热键的发送者
 
+  // 快捷鍵註冊結果快取（供 renderer 查詢）
+  let _lastRegistrationResults = null;
+
   ipcMain.handle("register-hotkey", (event, hotkey) => {
     try {
       if (ctx.hotkeyManager) {
@@ -229,6 +232,15 @@ module.exports = function register(ctx) {
         },
         onStopRecording: () => {
           ctx.logger.info('TypeLess: 觸發停止錄音');
+          // 主進程直接解靜音（belt-and-suspenders：不依賴渲染進程 IPC 回呼）
+          if (ctx.muteSystemAudioSync) {
+            try {
+              const r = ctx.muteSystemAudioSync(false, ctx.logger);
+              ctx.logger.info('TypeLess: 主進程解靜音結果:', JSON.stringify(r));
+            } catch (e) {
+              ctx.logger.warn('TypeLess: 主進程解靜音失敗:', e.message);
+            }
+          }
           // 隱藏錄音指示器視窗
           if (ctx.windowManager) {
             ctx.windowManager.hideTypelessIndicator();
@@ -240,6 +252,15 @@ module.exports = function register(ctx) {
         },
         onCancelRecording: () => {
           ctx.logger.info('TypeLess: 觸發取消錄音 (Esc)');
+          // 主進程直接解靜音
+          if (ctx.muteSystemAudioSync) {
+            try {
+              const r = ctx.muteSystemAudioSync(false, ctx.logger);
+              ctx.logger.info('TypeLess: 主進程解靜音結果 (取消):', JSON.stringify(r));
+            } catch (e) {
+              ctx.logger.warn('TypeLess: 主進程解靜音失敗 (取消):', e.message);
+            }
+          }
           // Esc 也順手停掉正在朗讀的語音（念到一半想停）：SAPI 後備殺程序 + 通知渲染端停 Edge MP3
           try { stopSpeaking(); } catch (e) { /* ignore */ }
           require("electron").BrowserWindow.getAllWindows().forEach((w) => {
@@ -252,6 +273,47 @@ module.exports = function register(ctx) {
           // 發送取消錄音事件到渲染進程（丟棄音訊、不轉錄、不貼上）
           require("electron").BrowserWindow.getAllWindows().forEach((w) => {
             if (!w.isDestroyed()) w.webContents.send("typeless-cancel-recording");
+          });
+        },
+        onAiOptimizeEnable: () => {
+          ctx.logger.info('TypeLess: AI 優化模式啟用 (Shift)');
+          require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+            if (!w.isDestroyed()) w.webContents.send("typeless-ai-optimize-enable");
+          });
+        },
+        onAiOptimizeDisable: () => {
+          ctx.logger.info('TypeLess: AI 優化模式自動關閉');
+          require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+            if (!w.isDestroyed()) w.webContents.send("typeless-ai-optimize-disable");
+          });
+        },
+        // AI 優化錄音回調（uiohook 觸發路徑）
+        onAiOptimizeRecordingStart: () => {
+          ctx.logger.info('AI 優化錄音: 觸發開始 (uiohook)');
+          // 儲存前景視窗
+          try {
+            ctx.clipboardManager.saveForegroundWindow();
+          } catch (err) {
+            ctx.logger.warn('AI 優化錄音: 儲存前景視窗失敗:', err.message);
+          }
+          // 顯示藥丸
+          if (ctx.windowManager) {
+            ctx.windowManager.showTypelessIndicator();
+          }
+          // 通知渲染進程啟用 AI + 開始錄音
+          require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+            if (!w.isDestroyed()) w.webContents.send("ai-optimize-recording-start");
+          });
+        },
+        onAiOptimizeRecordingStop: () => {
+          ctx.logger.info('AI 優化錄音: 觸發停止 (uiohook)');
+          // 隱藏藥丸
+          if (ctx.windowManager) {
+            ctx.windowManager.hideTypelessIndicator();
+          }
+          // 通知渲染進程停止錄音
+          require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+            if (!w.isDestroyed()) w.webContents.send("ai-optimize-recording-stop");
           });
         }
       });
@@ -527,6 +589,44 @@ module.exports = function register(ctx) {
         }
       });
 
+      // TypeLess 備用停止：當 uiohook 在高負載/錄影下吃掉第二個 keydown 時，
+      // 可透過此 globalShortcut 直接觸發停止錄音（不受掉事件影響）。
+      // 不同於同名的動態註冊版本（現已移除），此為永久註冊，任何時候皆可觸發。
+      ctx.hotkeyManager.setActionCallback('typeless-backup-stop', (info) => {
+        self.logger.info(`快捷鍵觸發: typeless-backup-stop (${info.accelerator})`);
+        self.typelessManager.forceReset();
+        // 主進程直接解靜音
+        if (self.muteSystemAudioSync) {
+          try {
+            const r = self.muteSystemAudioSync(false, self.logger);
+            self.logger.info('TypeLess: 主進程解靜音結果 (備用停止):', JSON.stringify(r));
+          } catch (e) {
+            self.logger.warn('TypeLess: 主進程解靜音失敗 (備用停止):', e.message);
+          }
+        }
+        if (self.windowManager) {
+          self.windowManager.hideTypelessIndicator();
+        }
+        require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+          if (!w.isDestroyed()) w.webContents.send("typeless-stop-recording");
+        });
+      });
+
+      // AI 優化錄音：按一下開始錄音 + 啟用 AI 優化，再按一下停止錄音
+      ctx.hotkeyManager.setActionCallback('ai-optimize-recording', (info) => {
+        self.logger.info(`快捷鍵觸發: ai-optimize-recording (${info.accelerator})`);
+        // 儲存前景視窗
+        try {
+          self.clipboardManager.saveForegroundWindow();
+        } catch (err) {
+          self.logger.warn('儲存前景視窗失敗:', err.message);
+        }
+        // 發送事件到所有視窗
+        require("electron").BrowserWindow.getAllWindows().forEach((w) => {
+          if (!w.isDestroyed()) w.webContents.send("ai-optimize-recording-toggle");
+        });
+      });
+
       // 從資料庫讀取設定，並與預設值合併（確保新增的快捷鍵也會被註冊）
       const savedHotkeys = await ctx.databaseManager.getSetting('custom_hotkeys', null);
       const defaults = ctx.hotkeyManager.getDefaultHotkeys();
@@ -543,6 +643,19 @@ module.exports = function register(ctx) {
         results[actionId] = ctx.hotkeyManager.registerActionHotkey(actionId, accelerator);
       }
 
+      // 記錄各快捷鍵註冊結果
+      const failed = Object.entries(results).filter(([, r]) => !r.success);
+      const succeeded = Object.entries(results).filter(([, r]) => r.success);
+      if (failed.length > 0) {
+        ctx.logger.warn(`快捷鍵註冊失敗 ${failed.length} 個:`, failed.map(([id, r]) => `${id}(${hotkeyConfig[id]}): ${r.error}`).join('; '));
+      }
+      if (succeeded.length > 0) {
+        ctx.logger.info(`快捷鍵註冊成功 ${succeeded.length} 個:`, succeeded.map(([id]) => `${id}(${hotkeyConfig[id]})`).join(', '));
+      }
+
+      // 快取註冊結果供 renderer 查詢
+      _lastRegistrationResults = results;
+
       return {
         success: true,
         hotkeys: hotkeyConfig,
@@ -551,6 +664,47 @@ module.exports = function register(ctx) {
     } catch (error) {
       ctx.logger.error("初始化快捷鍵失敗:", error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // 獲取快捷鍵註冊狀態（供 settings 面板顯示）
+  ipcMain.handle("get-hotkey-registration-status", async () => {
+    try {
+      return { success: true, results: _lastRegistrationResults };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // AI 優化錄音觸發鍵設定
+  ipcMain.handle("set-ai-optimize-trigger", async (event, triggerId) => {
+    try {
+      if (!ctx.typelessManager) {
+        return { success: false, error: "TypeLess 管理器未初始化" };
+      }
+      ctx.typelessManager.setAiOptimizeTrigger(triggerId);
+      await ctx.databaseManager.setSetting('ai_optimize_trigger', triggerId);
+      ctx.logger.info(`AI 優化錄音觸發鍵設為: ${triggerId || '停用'}`);
+      return { success: true };
+    } catch (error) {
+      ctx.logger.error("設定 AI 優化錄音觸發鍵失敗:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("get-ai-optimize-trigger", async () => {
+    try {
+      const triggerId = ctx.databaseManager.getSetting('ai_optimize_trigger', 'none');
+      return { success: true, triggerId };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // 渲染進程通知主進程：AI 優化錄音已停止（globalShortcut 路徑需要主進程隱藏藥丸）
+  ipcMain.on("ai-optimize-recording-stopped", () => {
+    if (ctx.windowManager) {
+      ctx.windowManager.hideTypelessIndicator();
     }
   });
 };

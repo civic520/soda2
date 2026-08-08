@@ -42,7 +42,7 @@ class TrayManager {
       }
 
       this.tray = new Tray(trayIcon);
-      this.tray.setToolTip("聲聲慢 - 中文語音轉文字");
+      this.tray.setToolTip("說打兔 - 中文語音轉文字");
 
       // 创建上下文菜单
       this.updateContextMenu();
@@ -136,14 +136,14 @@ class TrayManager {
 
     switch (status) {
       case "recording":
-        this.tray.setToolTip("聲聲慢 - 正在錄音...");
+        this.tray.setToolTip("說打兔 - 正在錄音...");
         break;
       case "processing":
-        this.tray.setToolTip("聲聲慢 - 正在處理...");
+        this.tray.setToolTip("說打兔 - 正在處理...");
         break;
       case "ready":
       default:
-        this.tray.setToolTip("聲聲慢 - 中文語音轉文字");
+        this.tray.setToolTip("說打兔 - 中文語音轉文字");
         break;
     }
   }

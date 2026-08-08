@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getMiniMode: () => ipcRenderer.invoke("get-mini-mode"),
   setWindowOpacity: (value) => ipcRenderer.invoke("set-window-opacity", value),
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  openDefaultModelDir: () => ipcRenderer.invoke("open-default-model-dir"),
+  getModelDir: () => ipcRenderer.invoke("get-model-dir"),
+  changeModelDir: () => ipcRenderer.invoke("change-model-dir"),
   onMiniModeChanged: (callback) => {
     const handler = (_event, enabled) => callback(enabled);
     ipcRenderer.on("mini-mode-changed", handler);
@@ -40,6 +43,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   transcribeAudio: (audioData, options) => ipcRenderer.invoke("transcribe-audio", audioData, options),
   checkSherpaStatus: () => ipcRenderer.invoke("check-sherpa-status"),
   restartSherpaServer: () => ipcRenderer.invoke("restart-sherpa-server"),
+  testCloudAsrConnection: (settings) => ipcRenderer.invoke("test-cloud-asr-connection", settings),
 
   // 邊錄邊算（precog）：錄音中先解碼已講完的段落，停止時只剩尾段
   precogStart: (profile) => ipcRenderer.invoke("precog-start", profile),
@@ -63,10 +67,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   checkModelFiles: () => ipcRenderer.invoke("check-model-files"),
   getDownloadProgress: () => ipcRenderer.invoke("get-download-progress"),
   downloadModels: () => ipcRenderer.invoke("download-models"),
+  checkModelExists: (modelType, customPath) => ipcRenderer.invoke("check-model-exists", modelType, customPath),
+  copyModelToCustom: (modelType, customPath) => ipcRenderer.invoke("copy-model-to-custom", modelType, customPath),
+  deleteModelFiles: (modelType, customPath) => ipcRenderer.invoke("delete-model-files", modelType, customPath),
+  getModelPath: (modelType, customPath) => ipcRenderer.invoke("get-model-path", modelType, customPath),
+  openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
+  switchModel: (modelName) => ipcRenderer.invoke("switch-model", modelName),
 
   // AI文本处理
   processText: (text, mode) => ipcRenderer.invoke("process-text", text, mode),
   checkAIStatus: (testConfig) => ipcRenderer.invoke("check-ai-status", testConfig),
+  fetchProviderModels: (providerSettings) => ipcRenderer.invoke("fetch-provider-models", providerSettings),
+
+  // AI風格包管理
+  getStylePacks: () => ipcRenderer.invoke("get-style-packs"),
+  saveStylePack: (pack) => ipcRenderer.invoke("save-style-pack", pack),
+  deleteStylePack: (packId) => ipcRenderer.invoke("delete-style-pack", packId),
+  setActiveStylePack: (packId) => ipcRenderer.invoke("set-active-style-pack", packId),
 
   // 剪贴板操作
   pasteText: (text) => ipcRenderer.invoke("paste-text", text),
@@ -211,6 +228,38 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("typeless-cancel-recording", callback);
   },
 
+  // AI 優化快捷錄音事件（trigger + Shift 組合）
+  onTypelessAiOptimizeEnable: (callback) => {
+    ipcRenderer.on("typeless-ai-optimize-enable", callback);
+    return () => ipcRenderer.removeListener("typeless-ai-optimize-enable", callback);
+  },
+  onTypelessAiOptimizeDisable: (callback) => {
+    ipcRenderer.on("typeless-ai-optimize-disable", callback);
+    return () => ipcRenderer.removeListener("typeless-ai-optimize-disable", callback);
+  },
+
+  // AI 優化錄音快捷鍵（globalShortcut，獨立於 TypeLess）
+  onAiOptimizeRecordingToggle: (callback) => {
+    ipcRenderer.on("ai-optimize-recording-toggle", callback);
+    return () => ipcRenderer.removeListener("ai-optimize-recording-toggle", callback);
+  },
+
+  // AI 優化錄音（uiohook 路徑：右 Alt/右 Ctrl 等）
+  onAiOptimizeRecordingStart: (callback) => {
+    ipcRenderer.on("ai-optimize-recording-start", callback);
+    return () => ipcRenderer.removeListener("ai-optimize-recording-start", callback);
+  },
+  onAiOptimizeRecordingStop: (callback) => {
+    ipcRenderer.on("ai-optimize-recording-stop", callback);
+    return () => ipcRenderer.removeListener("ai-optimize-recording-stop", callback);
+  },
+
+  // 緊急重置事件（from globalShortcut alt+shift+F9 → main.js）
+  onEmergencyReset: (callback) => {
+    ipcRenderer.on("emergency-reset", callback);
+    return () => ipcRenderer.removeListener("emergency-reset", callback);
+  },
+
   // =====================================================
   // 自定義快捷鍵設定 API
   // =====================================================
@@ -222,6 +271,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("set-action-hotkey", actionId, accelerator),
   resetHotkeys: (actionId) => ipcRenderer.invoke("reset-hotkeys", actionId),
   initCustomHotkeys: () => ipcRenderer.invoke("init-custom-hotkeys"),
+  getHotkeyRegistrationStatus: () => ipcRenderer.invoke("get-hotkey-registration-status"),
+
+  // AI 優化錄音觸發鍵
+  setAiOptimizeTrigger: (triggerId) => ipcRenderer.invoke("set-ai-optimize-trigger", triggerId),
+  getAiOptimizeTrigger: () => ipcRenderer.invoke("get-ai-optimize-trigger"),
+  // 通知主進程錄音已停止（globalShortcut 路徑隱藏藥丸）
+  notifyRecordingStopped: () => ipcRenderer.send("ai-optimize-recording-stopped"),
 
   // 快捷鍵操作事件監聽
   onHotkeyAction: (callback) => {
@@ -324,12 +380,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // 性能监控
   getPerformanceStats: () => ipcRenderer.invoke("get-performance-stats"),
-  clearPerformanceStats: () => ipcRenderer.invoke("clear-performance-stats")
+  clearPerformanceStats: () => ipcRenderer.invoke("clear-performance-stats"),
+
+  // 音效播放
+  playSound: (soundName) => ipcRenderer.invoke("play-sound", soundName),
+
+  // 系統音訊靜音（錄音期間）
+  muteSystemAudio: (mute) => ipcRenderer.invoke("mute-system-audio", mute)
 });
 
 // 添加一些实用的常量
 contextBridge.exposeInMainWorld("constants", {
-  APP_NAME: "聲聲慢 (SpeakSlow)",
+  APP_NAME: "說打兔 (soda2)",
   VERSION: "1.0.0",
   SUPPORTED_AUDIO_FORMATS: ["wav", "mp3", "m4a", "flac"],
   SUPPORTED_EXPORT_FORMATS: ["txt", "docx", "pdf", "json"],

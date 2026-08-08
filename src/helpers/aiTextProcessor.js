@@ -5,6 +5,19 @@
  */
 const { buildPrompts } = require("./aiPrompts");
 
+// 各模型商預設 base_url（與 settings.jsx AI_PROVIDERS 一致）
+const PROVIDER_DEFAULT_URLS = {
+  openai: 'https://api.openai.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  anthropic: 'https://api.anthropic.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  cerebras: 'https://api.cerebras.ai/v1',
+  zai: 'https://api.z.ai/api/paas/v4',
+  bedrock_mantle: 'https://bedrock-mantle.us-east-1.api.aws/v1',
+  custom: 'http://localhost:11434/v1',
+};
+
 class AITextProcessor {
   constructor(databaseManager, logger = console) {
     this.databaseManager = databaseManager;
@@ -29,50 +42,103 @@ class AITextProcessor {
   // AI文本处理方法（customPrompt 不為空時直接用它當 user 訊息，供操作模式 freeform 用）
   async processTextWithAI(text, mode = 'optimize', customPrompt = null) {
     try {
-      // 从数据库设置或環境變數获取API密钥
-      let apiKey = await this.databaseManager.getSetting('ai_api_key');
-      let baseUrl = await this.databaseManager.getSetting('ai_base_url');
-      let model = await this.databaseManager.getSetting('ai_model');
+      // 1. 讀取作用中的模型商 ID
+      let providerId = await this.databaseManager.getSetting('ai_provider_id', 'openai');
+
+      let apiKey = '';
+      let baseUrl = '';
+      let model = '';
+
+      const apiKeysMap = await this.databaseManager.getSetting('ai_api_keys', {});
+      const baseUrlsMap = await this.databaseManager.getSetting('ai_base_urls', {});
+      const modelsMap = await this.databaseManager.getSetting('ai_models', {});
+
+      apiKey = apiKeysMap[providerId] || '';
+      baseUrl = baseUrlsMap[providerId] || '';
+      model = modelsMap[providerId] || '';
+
+      // 相容舊版單一金鑰設定
+      if (providerId === 'openai' && !apiKey) {
+        apiKey = await this.databaseManager.getSetting('ai_api_key', '');
+        baseUrl = baseUrl || await this.databaseManager.getSetting('ai_base_url', PROVIDER_DEFAULT_URLS[providerId] || '');
+        model = model || await this.databaseManager.getSetting('ai_model', 'gpt-4o-mini');
+      }
+
+      // 如果是自訂，但沒有設定，則設為預設值
+      if (!baseUrl) {
+        baseUrl = PROVIDER_DEFAULT_URLS[providerId] || 'https://api.openai.com/v1';
+      }
 
       // 使用環境變數作為預設值（DeepSeek）
-      if (!apiKey && process.env.DEEPSEEK_API_KEY) {
+      if (!apiKey && process.env.DEEPSEEK_API_KEY && providerId === 'openai') {
         apiKey = process.env.DEEPSEEK_API_KEY;
         baseUrl = baseUrl || 'https://api.deepseek.com';
         model = model || 'deepseek-chat';
       }
 
-      if (!apiKey) {
+      if (!apiKey && providerId !== 'custom') {
         return {
           success: false,
-          error: '请先在设置页面配置AI API密钥'
+          error: '請先在設定頁面配置對應模型商的 API 金鑰'
         };
       }
 
       const prompts = buildPrompts(text);
 
-      // baseUrl 和 model 已在函數開頭定義（支援環境變數 fallback）
-
-      const requestData = {
-        model: model,
-        messages: [
-          {
-            role: 'system',
-            content: '你是一個文字處理引擎。你的唯一輸出就是「處理後的最終文字本身」。絕對禁止任何前言、說明、解釋、標題、引號或 markdown 代碼框（```）。不要說「以下是」「優化後的文本」「根據核心原則」這類話，直接給結果。'
-          },
-          {
-            role: 'user',
-            content: customPrompt || prompts[mode] || prompts.optimize
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-        stream: false
+      let apiEndpoint = baseUrl.trim();
+      let requestData;
+      const headers = {
+        'Content-Type': 'application/json'
       };
 
-      // 確保 baseUrl 不會重複添加 /chat/completions
-      let apiEndpoint = baseUrl;
-      if (!apiEndpoint.endsWith('/chat/completions')) {
-        apiEndpoint = `${apiEndpoint}/chat/completions`;
+      if (apiKey) {
+        if (providerId === 'anthropic') {
+          headers['x-api-key'] = apiKey;
+          headers['anthropic-version'] = '2023-06-01';
+        } else {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+      }
+
+      if (providerId === 'anthropic' && apiEndpoint.includes('api.anthropic.com')) {
+        if (!apiEndpoint.endsWith('/messages')) {
+          apiEndpoint = `${apiEndpoint.replace(/\/$/, '')}/messages`;
+        }
+        if (!apiEndpoint.includes('/v1/')) {
+          apiEndpoint = apiEndpoint.replace('api.anthropic.com/messages', 'api.anthropic.com/v1/messages');
+        }
+        requestData = {
+          model: model,
+          system: '你是一個文字處理引擎。你的唯一輸出就是「處理後的最終文字本身」。絕對禁止任何前言、說明、解釋、標題、引號或 markdown 代碼框（```）。不要說「以下是」「優化後的文本」「根據核心原則」這類話，直接給結果。',
+          messages: [
+            {
+              role: 'user',
+              content: customPrompt || prompts[mode] || prompts.optimize
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.3
+        };
+      } else {
+        if (!apiEndpoint.endsWith('/chat/completions')) {
+          apiEndpoint = `${apiEndpoint.replace(/\/$/, '')}/chat/completions`;
+        }
+        requestData = {
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一個文字處理引擎。你的唯一輸出就是「處理後的最終文字本身」。絕對禁止 any 前言、說明、解釋、標題、引號或 markdown 代碼框（```）。不要說「以下是」「優化後的文本」「根據核心原則」這類話，直接給結果。'
+            },
+            {
+              role: 'user',
+              content: customPrompt || prompts[mode] || prompts.optimize
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+          stream: false
+        };
       }
 
       this.logger.info('AI文本处理请求:', {
@@ -86,10 +152,7 @@ class AITextProcessor {
       // 60 秒逾時：AI 端點掛住時不能讓整個潤飾流程永遠卡死
       const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         body: JSON.stringify(requestData),
         signal: AbortSignal.timeout(60000)
       });
@@ -165,30 +228,47 @@ class AITextProcessor {
       this.logger.info('开始测试AI配置...', testConfig ? '使用临时配置' : '使用已保存配置');
       
       // 如果提供了测试配置，使用测试配置；否则使用已保存的配置
-      let apiKey, baseUrl, model;
+      let providerId, apiKey, baseUrl, model;
       
       if (testConfig) {
-        apiKey = testConfig.ai_api_key;
-        baseUrl = testConfig.ai_base_url || 'https://api.openai.com/v1';
-        model = testConfig.ai_model || 'gpt-3.5-turbo';
-        this.logger.info('使用临时测试配置:', { baseUrl, model, apiKeyLength: apiKey?.length || 0 });
+        providerId = testConfig.provider_id || 'openai';
+        apiKey = testConfig.api_key;
+        baseUrl = testConfig.base_url || 'https://api.openai.com/v1';
+        model = testConfig.model || 'gpt-4o-mini';
+        this.logger.info('使用临时测试配置:', { providerId, baseUrl, model, apiKeyLength: apiKey?.length || 0 });
       } else {
-        apiKey = await this.databaseManager.getSetting('ai_api_key');
-        baseUrl = await this.databaseManager.getSetting('ai_base_url') || 'https://api.openai.com/v1';
-        model = await this.databaseManager.getSetting('ai_model') || 'gpt-3.5-turbo';
+        providerId = await this.databaseManager.getSetting('ai_provider_id', 'openai');
+        const apiKeysMap = await this.databaseManager.getSetting('ai_api_keys', {});
+        const baseUrlsMap = await this.databaseManager.getSetting('ai_base_urls', {});
+        const modelsMap = await this.databaseManager.getSetting('ai_models', {});
+
+        apiKey = apiKeysMap[providerId] || '';
+        baseUrl = baseUrlsMap[providerId] || '';
+        model = modelsMap[providerId] || '';
+
+        // 相容舊版單一金鑰設定
+        if (providerId === 'openai' && !apiKey) {
+          apiKey = await this.databaseManager.getSetting('ai_api_key', '');
+          baseUrl = baseUrl || await this.databaseManager.getSetting('ai_base_url', PROVIDER_DEFAULT_URLS[providerId] || '');
+          model = model || await this.databaseManager.getSetting('ai_model', 'gpt-4o-mini');
+        }
+
+        // 如果沒有設定，則設為預設值
+        if (!baseUrl) {
+          baseUrl = PROVIDER_DEFAULT_URLS[providerId] || 'https://api.openai.com/v1';
+        }
 
         // 使用環境變數作為預設值（DeepSeek）
-        if (!apiKey && process.env.DEEPSEEK_API_KEY) {
+        if (!apiKey && process.env.DEEPSEEK_API_KEY && providerId === 'openai') {
           apiKey = process.env.DEEPSEEK_API_KEY;
           baseUrl = 'https://api.deepseek.com';
           model = 'deepseek-chat';
-          this.logger.info('使用環境變數 DEEPSEEK_API_KEY');
         }
 
-        this.logger.info('使用已保存配置:', { baseUrl, model, apiKeyLength: apiKey?.length || 0 });
+        this.logger.info('使用已保存配置:', { providerId, baseUrl, model, apiKeyLength: apiKey?.length || 0 });
       }
 
-      if (!apiKey) {
+      if (!apiKey && providerId !== 'custom') {
         this.logger.warn('AI测试失败: 未配置API密钥');
         return {
           available: false,
@@ -198,6 +278,7 @@ class AITextProcessor {
       }
       
       this.logger.info('AI配置信息:', {
+        providerId,
         baseUrl: baseUrl,
         model: model,
         apiKeyLength: apiKey.length
@@ -205,26 +286,61 @@ class AITextProcessor {
       
       // 发送一个更有意义的测试请求
       const testMessage = '请回复"测试成功"来确认AI服务正常工作';
-      const requestData = {
-        model: model,
-        messages: [
-          {
-            role: 'user',
-            content: testMessage
-          }
-        ],
-        max_tokens: 50,
-        temperature: 0.1
+      let requestData;
+      let apiEndpoint = baseUrl.trim();
+      const headers = {
+        'Content-Type': 'application/json'
       };
 
-      this.logger.info('发送AI测试请求:', requestData);
+      if (apiKey) {
+        if (providerId === 'anthropic') {
+          headers['x-api-key'] = apiKey;
+          headers['anthropic-version'] = '2023-06-01';
+        } else {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+      }
 
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      if (providerId === 'anthropic' && apiEndpoint.includes('api.anthropic.com')) {
+        if (!apiEndpoint.endsWith('/messages')) {
+          apiEndpoint = `${apiEndpoint.replace(/\/$/, '')}/messages`;
+        }
+        if (!apiEndpoint.includes('/v1/')) {
+          apiEndpoint = apiEndpoint.replace('api.anthropic.com/messages', 'api.anthropic.com/v1/messages');
+        }
+        requestData = {
+          model: model,
+          messages: [
+            {
+              role: 'user',
+              content: testMessage
+            }
+          ],
+          max_tokens: 50,
+          temperature: 0.1
+        };
+      } else {
+        if (!apiEndpoint.endsWith('/chat/completions')) {
+          apiEndpoint = `${apiEndpoint.replace(/\/$/, '')}/chat/completions`;
+        }
+        requestData = {
+          model: model,
+          messages: [
+            {
+              role: 'user',
+              content: testMessage
+            }
+          ],
+          max_tokens: 50,
+          temperature: 0.1
+        };
+      }
+
+      this.logger.info('发送AI测试请求:', { apiEndpoint, requestData });
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         body: JSON.stringify(requestData),
         signal: AbortSignal.timeout(20000) // 連線測試 20 秒逾時
       });
@@ -259,11 +375,14 @@ class AITextProcessor {
       const data = await response.json();
       this.logger.info('AI API成功响应:', data);
 
-      if (!data.choices || data.choices.length === 0) {
-        throw new Error('AI API返回格式异常：缺少choices字段');
+      let aiResponse = '';
+      if (data.choices && data.choices.length > 0) {
+        aiResponse = data.choices[0].message?.content || '';
+      } else if (data.content && data.content.length > 0) {
+        aiResponse = data.content[0].text || '';
+      } else {
+        throw new Error('AI API返回格式异常：缺少 choices 或 content 欄位');
       }
-
-      const aiResponse = data.choices[0].message?.content || '';
       this.logger.info('AI回复内容:', aiResponse);
 
       return {

@@ -5,6 +5,21 @@ import './index.css'
 import { Toaster } from './components/ui/sonner'
 import { LanguageProvider } from './i18n'
 
+// 阻止 Alt 鍵聚焦視窗選單的預設行為（避免視窗進入 modal 迴圈導致全球熱鍵吞鍵與卡死）
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Alt') {
+    const activeEl = document.activeElement;
+    const isInput = activeEl && (
+      activeEl.tagName === 'INPUT' || 
+      activeEl.tagName === 'TEXTAREA' || 
+      activeEl.isContentEditable
+    );
+    if (!isInput) {
+      e.preventDefault();
+    }
+  }
+}, { capture: true });
+
 // 检查是否在Electron环境中
 const isElectron = () => {
   return typeof window !== 'undefined' && window.electronAPI
@@ -48,7 +63,7 @@ class ErrorBoundary extends React.Component {
             </div>
 
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              聲聲慢遇到了一個意外錯誤。請嘗試重啟應用。
+              說打兔遇到了一個意外錯誤。請嘗試重啟應用。
             </p>
 
             {process.env.NODE_ENV === 'development' && (
@@ -63,7 +78,7 @@ class ErrorBoundary extends React.Component {
                   <div>
                     <strong>堆疊:</strong>
                     <pre className="whitespace-pre-wrap">
-                      {this.state.errorInfo.componentStack}
+                      {this.state.errorInfo && this.state.errorInfo.componentStack}
                     </pre>
                   </div>
                 </div>
@@ -134,22 +149,38 @@ function initializeApp() {
     })
   }
 
-  // 设置中文语言环境
+  // 設置中文語言環境
   document.documentElement.lang = 'zh-CN'
   
-  // 添加系统主题检测
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    document.documentElement.classList.add('dark')
-  }
-
-  // 监听系统主题变化
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (e.matches) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
+  // 從 DB 讀取主題設定並套用
+  const applyTheme = (theme) => {
+    const root = document.documentElement;
+    root.classList.remove('dark', 'theme-dark-tech', 'theme-premium-light', 'theme-light-blue');
+    if (theme === 'system') {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        root.classList.add('dark');
+      }
+    } else if (theme) {
+      root.classList.add(theme);
     }
-  })
+  };
+
+  // 優先從 DB 讀取主題（跨重啟持久化）
+  if (window.electronAPI?.getSetting) {
+    window.electronAPI.getSetting('app_theme', 'system').then(theme => {
+      applyTheme(theme);
+    }).catch(() => {
+      // fallback: 偵測系統深色模式
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      }
+    });
+  } else {
+    // Web 環境 fallback
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  }
 }
 
 // 初始化应用

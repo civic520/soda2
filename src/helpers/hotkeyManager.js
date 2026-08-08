@@ -28,6 +28,8 @@ class HotkeyManager {
       'show-window': 'CommandOrControl+Shift+Q',
       'copy-last': 'CommandOrControl+Shift+C',
       'toggle-command-mode': 'CommandOrControl+Shift+K',
+      'typeless-backup-stop': 'CommandOrControl+Shift+F8',
+      'ai-optimize-recording': 'CommandOrControl+Shift+A',
     };
 
     // 系統保留快捷鍵（不允許使用）
@@ -102,6 +104,7 @@ class HotkeyManager {
       'show-window': '顯示主視窗',
       'copy-last': '複製上次結果',
       'toggle-command-mode': '切換操作模式',
+      'typeless-backup-stop': 'TypeLess 備用停止',
     };
     return names[actionId] || actionId;
   }

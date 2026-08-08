@@ -99,7 +99,7 @@ class EnvironmentManager {
   }
 
   getDataDirectory() {
-    const appName = "聲聲慢";
+    const appName = "說打兔";
     
     switch (process.platform) {
       case "win32":

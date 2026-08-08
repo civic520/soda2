@@ -8,8 +8,8 @@ module.exports = function register(ctx) {
     try {
       const { app, shell } = require("electron");
       const fs = require("fs");
-      const p = require("path").join(app.getPath("userData"), "speakslow-notes.md");
-      if (!fs.existsSync(p)) fs.writeFileSync(p, "# 聲聲慢筆記\n", "utf8");
+      const p = require("path").join(app.getPath("userData"), "soda2-notes.md");
+      if (!fs.existsSync(p)) fs.writeFileSync(p, "# 說打兔筆記\n", "utf8");
       await shell.openPath(p);
       return { success: true };
     } catch (e) {
@@ -105,7 +105,8 @@ module.exports = function register(ctx) {
     // 同時返回服務器狀態，避免前端需要額外調用
     const serverStatus = {
       server_ready: ctx.sherpaManager.serverReady,
-      models_initialized: ctx.sherpaManager.modelsInitialized
+      models_initialized: ctx.sherpaManager.modelsInitialized,
+      server_process_running: ctx.sherpaManager.serverProcess !== null
     };
     console.log("[IPC] check-model-files 返回:", JSON.stringify({...result, ...serverStatus}));
     return { ...result, ...serverStatus };
@@ -127,6 +128,42 @@ module.exports = function register(ctx) {
     // 回傳 audio_path）。這裡不再另存一份 — 之前重複存檔導致每段錄音
     // 落地兩份 WAV，且此處覆蓋 audio_path 讓另一份變成孤兒檔。
     return await ctx.sherpaManager.transcribeAudio(audioData, options);
+  });
+
+  // 測試雲端 ASR 連線
+  ipcMain.handle("test-cloud-asr-connection", async (event, cloudAsrSettings) => {
+    try {
+      const CloudAsrClient = require("../cloudAsrClient");
+      const sampleRate = 16000;
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const numSamples = sampleRate / 2; // 0.5s
+      const dataSize = numSamples * (bitsPerSample / 8) * numChannels;
+      const fileSize = 36 + dataSize;
+      
+      const wavHeader = Buffer.alloc(44);
+      wavHeader.write("RIFF", 0);
+      wavHeader.writeUInt32LE(fileSize, 4);
+      wavHeader.write("WAVE", 8);
+      wavHeader.write("fmt ", 12);
+      wavHeader.writeUInt32LE(16, 16);
+      wavHeader.writeUInt16LE(1, 20); // PCM
+      wavHeader.writeUInt16LE(numChannels, 22);
+      wavHeader.writeUInt32LE(sampleRate, 24);
+      wavHeader.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28);
+      wavHeader.writeUInt16LE(numChannels * (bitsPerSample / 8), 32);
+      wavHeader.writeUInt16LE(bitsPerSample, 34);
+      wavHeader.write("data", 36);
+      wavHeader.writeUInt32LE(dataSize, 40);
+      
+      const silence = Buffer.alloc(dataSize);
+      const audioBuffer = Buffer.concat([wavHeader, silence]);
+      
+      const resultText = await CloudAsrClient.transcribe(cloudAsrSettings, audioBuffer);
+      return { success: true, text: resultText };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   });
 
   // 邊錄邊算（precog）：錄音中把已閉合語音段先解碼，停止時只剩尾段
@@ -296,20 +333,50 @@ module.exports = function register(ctx) {
   });
 
   ipcMain.handle("get-current-model", async () => {
-    const status = await ctx.sherpaManager.checkStatus();
+    const status = await ctx.sherpaManager.checkModelFiles();
+    const activeType = ctx.databaseManager ? ctx.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
     return {
-      model: "sherpa-onnx-paraformer-zh",
+      model: activeType,
       status: status.models_downloaded ? "ready" : "not_downloaded",
       details: status
     };
   });
 
-  ipcMain.handle("switch-model", (event, modelName) => {
-    // Sherpa 目前使用固定模型，暂不支持切换
-    return {
-      success: false,
-      error: "Sherpa 目前使用固定模型，暂不支持切换"
-    };
+  ipcMain.handle("switch-model", async (event, modelName) => {
+    try {
+      if (ctx.databaseManager) {
+        await ctx.databaseManager.setSetting('asr_model_type', modelName);
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("check-model-exists", async (event, modelType, customPath) => {
+    return await ctx.sherpaManager.checkModelFiles(modelType, customPath);
+  });
+
+  ipcMain.handle("copy-model-to-custom", async (event, modelType, customPath) => {
+    const defaultPath = ctx.sherpaManager.getModelCachePath(modelType, "");
+    const destPath = path.join(customPath, ctx.sherpaManager.getModelConfig(modelType).name);
+    return await ctx.sherpaManager.copyModelFiles(modelType, defaultPath, destPath);
+  });
+
+  ipcMain.handle("delete-model-files", async (event, modelType, customPath) => {
+    return await ctx.sherpaManager.deleteModelFiles(modelType, customPath);
+  });
+
+  ipcMain.handle("get-model-path", (event, modelType, customPath) => {
+    return ctx.sherpaManager.getModelCachePath(modelType, customPath);
+  });
+
+  ipcMain.handle("open-directory-dialog", async () => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    });
+    return result;
   });
 
   ipcMain.handle("test-sherpa-environment", async () => {

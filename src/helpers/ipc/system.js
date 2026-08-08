@@ -71,6 +71,101 @@ module.exports = function register(ctx) {
     require("electron").shell.showItemInFolder(resolved);
   });
 
+  ipcMain.handle("open-default-model-dir", () => {
+    const shell = require("electron").shell;
+    try {
+      // 開發模式：專案根目錄/model/；打包版：userData/models/
+      const isPackaged = !!(require("electron").app?.isPackaged);
+      let modelsDir;
+      if (isPackaged) {
+        modelsDir = path.join(require("electron").app.getPath("userData"), "models");
+      } else {
+        modelsDir = path.join(__dirname, "..", "..", "..", "model");
+      }
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+      shell.openPath(modelsDir);
+      return { success: true };
+    } catch (_) { /* ignore */ }
+  });
+
+  // 取得目前模型目錄路徑
+  ipcMain.handle("get-model-dir", () => {
+    try {
+      const customDir = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
+      const isPackaged = !!(require("electron").app?.isPackaged);
+      const defaultDir = isPackaged
+        ? path.join(require("electron").app.getPath("userData"), "models")
+        : path.join(__dirname, "..", "..", "..", "model");
+      return { success: true, currentDir: customDir || defaultDir, isCustom: !!customDir, defaultDir };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // 變更模型目錄：選資料夾 → 移動已有模型 → 存設定
+  ipcMain.handle("change-model-dir", async () => {
+    const { dialog, app } = require("electron");
+    const isPackaged = !!(app?.isPackaged);
+    const defaultDir = isPackaged
+      ? path.join(app.getPath("userData"), "models")
+      : path.join(__dirname, "..", "..", "..", "model");
+
+    const currentCustom = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
+    const oldDir = currentCustom || defaultDir;
+
+    // 開啟選資料夾對話框
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory", "createDirectory"],
+      title: "選擇模型存放目錄",
+      defaultPath: oldDir,
+    });
+    if (result.canceled || !result.filePaths?.length) {
+      return { success: false, canceled: true };
+    }
+    const newDir = result.filePaths[0];
+    if (newDir === oldDir) {
+      return { success: true, moved: false, message: "目錄未變更" };
+    }
+
+    // 確保新目錄存在
+    if (!fs.existsSync(newDir)) {
+      fs.mkdirSync(newDir, { recursive: true });
+    }
+
+    // 移動已有模型
+    const movedModels = [];
+    if (fs.existsSync(oldDir)) {
+      const entries = fs.readdirSync(oldDir);
+      for (const entry of entries) {
+        const srcPath = path.join(oldDir, entry);
+        const destPath = path.join(newDir, entry);
+        try {
+          const stat = fs.statSync(srcPath);
+          if (!stat.isDirectory()) continue;
+          if (fs.existsSync(destPath)) continue; // 目標已存在，跳過
+          fs.renameSync(srcPath, destPath);
+          movedModels.push(entry);
+        } catch (e) {
+          ctx.logger && ctx.logger.warn && ctx.logger.warn(`模型移動失敗 ${entry}:`, e.message);
+        }
+      }
+    }
+
+    // 儲存設定
+    if (ctx.databaseManager) {
+      ctx.databaseManager.setSetting("custom_model_dir", newDir);
+    }
+
+    // 清除 sherpaManager 的模型路徑快取
+    if (ctx.sherpaManager) {
+      ctx.sherpaManager.modelsDownloaded = null;
+    }
+
+    return { success: true, moved: true, movedModels, newDir };
+  });
+
   ipcMain.handle("open-external", (event, url) => {
     try {
       if (new URL(url).protocol !== "https:") return;
@@ -127,7 +222,7 @@ module.exports = function register(ctx) {
   ipcMain.handle("test-accessibility-permission", async () => {
     try {
       // 使用测试文本检查权限
-      await ctx.clipboardManager.pasteText("聲聲慢權限測試");
+      await ctx.clipboardManager.pasteText("說打兔權限測試");
       return { success: true, message: "辅助功能权限测试成功" };
     } catch (error) {
       ctx.logger.error("辅助功能权限测试失败:", error);

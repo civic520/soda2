@@ -1,7 +1,7 @@
 {
-  "name": "speakslow",
-  "version": "1.0.14",
-  "description": "聲聲慢 SpeakSlow - 專為中文打造、最快的本地語音輸入（sherpa-onnx）",
+  "name": "soda2",
+  "version": "1.0.22",
+  "description": "說打兔 soda2 - 最快的本地語音與線上輸入（sherpa-onnx）",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -12,6 +12,7 @@
     "build": "cd src && vite build && cd .. && electron-builder",
     "postinstall": "electron-builder install-app-deps",
     "build:renderer": "cd src && vite build",
+    "build:native": "cd native/mute-native && cargo build --release --target x86_64-pc-windows-msvc && copy target\\x86_64-pc-windows-msvc\\release\\mute_native.dll index.node",
     "prepare:python": "pip install sherpa-onnx numpy opencc edge-tts pyinstaller && python download_all_models.py",
     "build:backend": "node scripts/build-backend.mjs",
     "build:win": "electron-builder --win",
@@ -29,6 +30,7 @@
       "!build/**",
       "!web/**",
       "!poc-sherpa/**",
+      "!model/**",
       "!assets/logo-build/**",
       "!.venv/**"
     ]
@@ -49,7 +51,9 @@
   "license": "MIT",
   "devDependencies": {
     "@electron/notarize": "^3.0.1",
+    "@electron/rebuild": "^4.0.4",
     "@eslint/js": "^9.25.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/postcss": "^4.1.13",
     "@tailwindcss/vite": "^4.1.10",
     "@types/react": "^19.1.2",
@@ -93,8 +97,8 @@
     "uiohook-napi": "^1.5.4"
   },
   "build": {
-    "appId": "com.speakslow.app",
-    "productName": "SpeakSlow",
+    "appId": "com.soda2.app",
+    "productName": "soda2",
     "npmRebuild": false,
     "directories": {
       "output": "dist"
@@ -110,22 +114,20 @@
       "src/helpers/**/*",
       "src/utils/**/*",
       "assets/**/*",
+      "native/**/*.node",
       "!node_modules/.cache/**/*",
       "!src/node_modules/**/*"
     ],
     "asarUnpack": [
       "sherpa_server.py",
       "text_processing.py",
-      "node_modules/**/*better-sqlite3*/**/*"
+      "node_modules/**/*better-sqlite3*/**/*",
+      "native/**/*.node"
     ],
     "extraResources": [
       {
         "from": "build_pyi/dist/sherpa_server",
         "to": "sherpa-backend"
-      },
-      {
-        "from": "poc-sherpa/sherpa-onnx-paraformer-zh-2023-09-14",
-        "to": "sherpa-backend/poc-sherpa/sherpa-onnx-paraformer-zh-2023-09-14"
       },
       {
         "from": "poc-sherpa/sherpa-onnx-paraformer-zh-small-2024-03-09",
@@ -152,7 +154,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "聲聲慢",
+      "shortcutName": "說打兔",
       "include": "build/installer.nsh"
     },
     "linux": {

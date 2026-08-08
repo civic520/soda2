@@ -79,7 +79,8 @@ export const useModelStatus = () => {
       // 從 checkModelFiles 結果中獲取服務器狀態
       const serverStatus = {
         success: modelFiles.server_ready || false,
-        models_initialized: modelFiles.models_initialized || false
+        models_initialized: modelFiles.models_initialized || false,
+        server_process_running: modelFiles.server_process_running !== false
       };
       console.log('[useModelStatus] serverStatus:', serverStatus);
 
@@ -132,8 +133,20 @@ export const useModelStatus = () => {
           progress: 50,
           stage: 'loading'
         }));
+      } else if (!serverStatus.server_process_running) {
+        // 伺服器行程已經退出 (說明啟動失敗或 Python 環境未安裝 dependency)
+        setModelStatus(prev => ({
+          ...prev,
+          isLoading: false,
+          isReady: false,
+          modelsDownloaded: true,
+          missingModels: [],
+          error: "語音識別服務啟動失敗。請確認是否已安裝 Python 相依套件（如 sherpa-onnx）。請在終端機中執行 `pnpm run prepare:python` 下載並準備嵌入式 Python 環境。",
+          progress: 0,
+          stage: 'error'
+        }));
       } else {
-        // 模型已下载但服务器未就绪 - 显示为 loading 状态而非 error
+        // 模型已下载但服务器未就绪 - 显示为 loading 狀態而非 error
         // 因为服务器可能正在启动中
         setModelStatus(prev => ({
           ...prev,

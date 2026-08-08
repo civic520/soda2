@@ -17,7 +17,7 @@ export default {
     outSrt: '字幕 SRT',
   },
   // 應用名稱
-  appName: '聲聲慢',
+  appName: '說打兔',
 
   // 設定頁面
   settings: {
@@ -28,6 +28,13 @@ export default {
     notificationsDesc: '控制是否顯示操作成功等提示通知',
     language: '介面語言',
     languageDesc: '選擇應用介面顯示的語言',
+    appTheme: '應用主題',
+    appThemeDesc: '選擇軟體的外觀風格',
+    appThemeChanged: '主題已切換',
+    themeSystem: '跟隨系統',
+    themePremiumLight: '現代優雅（粉霧微漸層）',
+    themeDarkTech: '極夜青森（深青綠高對比）',
+    themeZenNatural: '清爽科技（淡藍漸層玻璃）',
     micDevice: '麥克風',
     micDeviceDesc: '指定收音的麥克風；選錯或收不到聲音會導致辨識亂跳/重複。',
     micDeviceDefault: '系統預設',
@@ -46,6 +53,7 @@ export default {
     typelessTriggerDesc: '按一下開始錄音、再按一下停止。若預設鍵跟其他軟體衝突，可改用功能鍵（Mac 沒有右 Ctrl，建議用 F8～F10）。',
     typelessTriggerChanged: '已更新觸發鍵',
     typelessTriggerDefault: '右 Alt + 右 Ctrl（預設）',
+    typelessTriggerDefaultMac: '右 Option（預設）',
     typelessTriggerCtrlRight: '右 Ctrl',
     typelessTriggerAltRight: '右 Alt',
     autoFormatLists: '自動列點',
@@ -53,7 +61,9 @@ export default {
     autoLineBreak: '依停頓自動分行',
     autoLineBreakDesc: '講話停頓較久時自動換行。預設關閉（中途想一下不會被誤斷成多行）。',
     asrProfile: '效能模式',
-    asrProfileDesc: '老電腦選「快速」：辨識快 2~3 倍，精度略降',
+    asrProfileDesc: '內建 Paraformer 專用。非預設模型啟用時將自動切換回內建模型。',
+    asrProfileLevel: '模式等級',
+    asrProfileLevelDesc: '老電腦選「快速」：辨識快 2~3 倍，精度略降',
     asrProfileStandard: '標準（最準）',
     asrProfileFast: '快速（弱電腦）',
     asrProfileChanged: '效能模式已切換，下次辨識生效',
@@ -76,7 +86,11 @@ export default {
     enableAI: '啟用AI文字優化',
     apiKey: 'API Key',
     apiKeyPlaceholder: '請輸入您的AI API Key',
+    apiKeyOptional: '選填（本地 LLM 免金鑰）',
     apiKeyDesc: '用於AI文字優化功能的API金鑰',
+    aiProvider: 'AI 模型商',
+    fetchModels: '整理模型清單',
+    availableModels: '可用模型（點選套用）',
     aiSetupHelp: '不知道怎麼設定？看教學',
     baseUrl: 'API Base URL',
     baseUrlDesc: 'AI服務的API端點地址，支援OpenAI相容的API',
@@ -105,6 +119,23 @@ export default {
       qwenFast: 'Qwen2.5 3B (更快)'
     },
 
+    aiStylePack: 'AI 風格包',
+    aiStylePackDesc: '自訂 AI 潤飾提示詞風格，可建立多組隨時切換',
+    aiStylePackBuiltin: '內建',
+    aiStylePackNew: '+ 新建風格包',
+    aiStylePackEdit: '編輯風格包',
+    aiStylePackDelete: '刪除',
+    aiStylePackDeleteConfirm: '確定刪除「{name}」？',
+    aiStylePackName: '風格包名稱',
+    aiStylePackNamePlaceholder: '輸入風格包名稱',
+    aiStylePackPrompt: '提示詞模板（使用 ${text} 作為語音文字的佔位符）',
+    aiStylePackMode: '模式',
+    aiStylePackSaveSuccess: '風格包已儲存',
+    aiStylePackDeleteSuccess: '風格包已刪除',
+    aiStylePackApplied: '已套用風格包：{name}',
+    aiStylePackSaved: '風格包已儲存並套用',
+    aiStylePackNameRequired: '請輸入風格包名稱',
+
     testConfig: '測試設定',
     testConfigDesc: '測試當前編輯的設定（無需儲存）',
     testing: '測試中...',
@@ -118,10 +149,11 @@ export default {
     saveSuccess: '設定儲存成功',
     saveFailed: '儲存設定失敗',
     loadFailed: '載入設定失敗',
+    statusSaved: '已儲存設定',
 
-    about: '關於聲聲慢',
+    about: '關於說打兔',
     aboutDesc: '基於 Sherpa-ONNX 和 AI 的繁體中文語音轉文字應用',
-    brandFull: '聲聲慢 (SpeakSlow)',
+    brandFull: '說打兔 (soda2)',
     features: {
       recognition: '高精度中文語音辨識',
       ai: 'AI智慧文字優化',
@@ -132,14 +164,35 @@ export default {
     // 設定視窗左側分頁
     tabs: {
       general: '一般設定',
+      models: '模型選擇',
       history: '歷史紀錄',
       ai: 'AI 文字優化',
+      aiStylePack: 'AI 風格包',
       hotkeys: '快捷鍵',
       hotwords: '熱詞',
       dictionary: '字典',
       emoji: '符號',
       permissions: '權限管理',
       about: '關於'
+    },
+    style: {
+      title: 'AI 風格包調色盤',
+      description: '藉由組合核心主提示詞、不同情境的修飾模式、領域專有名詞卡與自訂規則，動態編譯出最完美的 AI 潤飾效果。',
+      tabs: {
+        mainPrompt: '主 Prompt',
+        modes: '修飾模式',
+        hotwords: '熱詞',
+        dicts: '專業詞庫',
+        customRules: '自訂規則',
+        backup: '備份與還原'
+      },
+      toast: {
+        changesApplied: '設定已套用至 AI 潤飾系統',
+        confirmDelete: '您確定要刪除此自訂項目嗎？此操作不可逆。',
+        itemDeleted: '自訂項目已成功刪除',
+        confirmReset: '確定要重置此預設項目為出廠內容嗎？',
+        resetDone: '已重置為預設範本內容'
+      }
     },
     emoji: {
       title: '語音符號',
@@ -175,11 +228,51 @@ export default {
     streamingModelDownloaded: '串流模型下載完成',
     streamingModelDownloadFailed: '串流模型下載失敗: {error}',
 
+    // 聲音回饋
+    soundFeedback: '聲音回饋',
+    soundFeedbackDesc: '錄音時播放提示音與控制系統音訊',
+    soundFeedbackToggle: '錄音提示音',
+    soundFeedbackToggleDesc: '開始與結束錄音時播放提示音效',
+    soundFeedbackVolume: '音量',
+    soundFeedbackVolumeDesc: '調整錄音提示音的大小聲',
+    soundTheme: '音效主題',
+    soundThemeDesc: '選擇錄音提示音的音效組',
+    testSound: '測試音效',
+    testSoundDesc: '預覽目前選擇的音效主題',
+    testSoundPlay: '▶ 播放',
+    muteWhileRecording: '錄音時靜音',
+    muteWhileRecordingDesc: '錄音期間暫時將系統音訊靜音',
+    soundEnabled: '錄音提示音已開啟',
+    soundDisabled: '錄音提示音已關閉',
+    muteWhileRecordingEnabled: '錄音時將靜音系統音訊',
+    muteWhileRecordingDisabled: '錄音時不再靜音系統音訊',
+
     // 視窗控制
     windowControl: '🪟 視窗控制',
     windowControlDesc: '設定視窗置頂與系統托盤行為',
     windowOpacity: '視窗透明度',
     windowOpacityDesc: '讓面板半透明（迷你與一般面板共用），看得到底下的東西',
+    saveAudioFiles: '保存錄音檔',
+    saveAudioFilesDesc: '關閉後語音輸入不再把音檔寫進磁碟（省 SSD、不留存；代價是這些無法「重新辨識」）',
+    audioRetention: '錄音保留期限',
+    audioRetentionDesc: '開機自動清掉超過期限的舊錄音，避免無限增長佔空間',
+    saveAudio: '保存錄音檔',
+    saveAudioDesc: '存下錄音以便日後「重新辨識」。關掉可減少 SSD 寫入、不留存錄音（但這些就無法重辨）。',
+    audioRetentionChanged: '已更新保留期限',
+    retentionDays: '保留 {n} 天',
+    retentionForever: '永久保留',
+    autoStart: '隨開機自動啟動',
+    autoStartDesc: 'Windows / macOS 啟動時自動背景執行 soda2',
+    autoStartMinimized: '開機啟動時縮小至托盤',
+    autoStartMinimizedDesc: '隨系統啟動時保持隱藏，不彈出主面板干擾工作',
+    autoStartEnabled: '已啟用開機自啟動',
+    autoStartDisabled: '已關閉開機自啟動',
+    autoStartMinimizedEnabled: '開機後將縮小至系統托盤',
+    autoStartMinimizedDisabled: '開機後將顯示主面板',
+    retention7: '7 天',
+    retention30: '30 天',
+    retention90: '90 天',
+    retentionPermanent: '永久',
     commandSection: '操作模式 / 朗讀',
     commandSectionDesc: '語音指令模式（Ctrl+Shift+K 切換）的朗讀語音與行為',
     openNotes: '打開筆記',
@@ -218,13 +311,13 @@ export default {
 
     // 關於分頁
     aboutTab: {
-      brandSub: 'SpeakSlow',
-      logoAlt: '聲聲慢 logo',
-      tagline: '專為中文打造、最快的本地語音輸入 · 免費、隱私',
+      brandSub: 'soda2',
+      logoAlt: '說打兔 logo',
+      tagline: '最快的本地語音與線上輸入 · 免費、自由選擇',
       authorTitle: '作者',
-      authorPrefix: '由 ',
+      authorPrefix: '本專案於\n',
       authorName: '切版職人',
-      authorSuffix: ' 開發維護。',
+      authorSuffix: ' 開發的聲聲慢為基礎，新增些許功能',
       acknowledgements: '致謝',
       ackQuqu: '原始專案，本專案在其基礎上改用 sherpa-onnx 引擎並重做 UI 與互動。',
       ackSherpa: '本地語音辨識引擎。',
@@ -266,7 +359,21 @@ export default {
         toggleCommandMode: {
           name: '切換操作模式',
           description: '開／關語音指令模式（操作模式）'
+        },
+        typelessBackupStop: {
+          name: 'TypeLess 備用停止',
+          description: '當右 Alt/右 Ctrl 因系統高負載或錄影無法停止錄音時，按此鍵強制停止'
         }
+      },
+      aiOptimizeTrigger: {
+        title: 'AI 優化錄音觸發鍵',
+        description: '按此鍵開始錄音並啟用 AI 文字優化，再按一次停止',
+        none: '停用',
+        altRight: '右 Alt',
+        ctrlRight: '右 Ctrl',
+        f11: 'F11',
+        f12: 'F12',
+        tip: '與快速錄音鍵（右 Alt/右 Ctrl）不衝突，可分配不同按鍵'
       }
     },
 
@@ -481,7 +588,7 @@ export default {
       unitChars: '字',
       unitSpeed: '字/分',
       hourUnit: '時',
-      localOnly: '🔒 資料只存在本機 · 聲聲慢 SpeakSlow'
+      localOnly: '🔒 資料只存在本機 · 說打兔 soda2'
     },
     dailyChart: {
       title: '每日字數・近 14 天',
@@ -537,7 +644,7 @@ export default {
     accTestSuccessDesc: '輔助功能權限正常運作！請檢查測試文字是否出現在其他應用中。',
     accNeededTitle: '❌ 需要輔助功能權限',
     accNeededDesc: '請在系統設定中授予輔助功能權限，以啟用自動文字貼上功能。',
-    testText: '聲聲慢輔助功能測試'
+    testText: '說打兔輔助功能測試'
   },
 
   // 錯誤訊息
@@ -547,6 +654,7 @@ export default {
     asrPreparing: '正在準備語音辨識服務，請稍候...',
     browserNoRecording: '您的瀏覽器不支援錄音功能',
     cannotStartRecording: '無法開始錄音: {error}',
+    micInitializing: '麥克風啟動中，請稍後再試',
     emptyRecording: '錄音數據為空，請重新錄音',
     recordingTooShort: '錄音時間太短，請說話後再停止錄音',
     audioProcessingFailed: '音訊處理失敗: {error}',
@@ -595,7 +703,8 @@ export default {
     modelNotReady: '模型未就緒，請稍候...',
     languageChanged: '語言已切換',
     clickTarget: '請點擊要貼上文字的位置',
-    cancelled: '已取消'
+    cancelled: '已取消',
+    emergencyReset: '緊急重置：已停止錄音並重置熱鍵狀態 (Ctrl+Shift+F9)'
   },
 
   // 語言選項

@@ -19,6 +19,7 @@
 }
 
 @layer base {
+  /* ==================== 預設白主題 ==================== */
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -40,8 +41,34 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    /* 主題強調色 */
+    --theme-accent: 221.2 83.2% 53.3%;
+    --theme-accent-rgb: 59, 130, 246;
+    --theme-accent-soft: 210 100% 96%;
+    /* 毛玻璃 */
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    /* 按鈕 */
+    --btn-primary-bg: hsl(221.2 83.2% 53.3%);
+    --btn-primary-glow: rgba(59, 130, 246, 0.3);
+    --btn-primary-hover: hsl(221.2 83.2% 48%);
+    /* 開關 */
+    --toggle-active-bg: hsl(221.2 83.2% 53.3%);
+    --toggle-active-glow: rgba(59, 130, 246, 0.35);
+    /* 迷你膠囊 */
+    --mini-capsule-bg: #ffffff;
+    /* 錄音藥丸指示器 */
+    --pill-recording-bg: #ef4444;
+    --pill-recording-border: rgba(252,165,165,0.6);
+    --pill-cloud-bg: #f5a623;
+    --pill-cloud-border: rgba(255,215,0,0.6);
+    --pill-command-bg: #38bdf8;
+    --pill-command-border: rgba(125,211,252,0.6);
+    color-scheme: light;
   }
 
+  /* ==================== 系統深色模式 ==================== */
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -62,8 +89,419 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 94.1%;
+    --theme-accent: 217.2 91.2% 59.8%;
+    --theme-accent-rgb: 96, 165, 250;
+    --theme-accent-soft: 217.2 32.6% 20%;
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --btn-primary-bg: hsl(217.2 91.2% 59.8%);
+    --btn-primary-glow: rgba(96, 165, 250, 0.3);
+    --btn-primary-hover: hsl(217.2 91.2% 55%);
+    --toggle-active-bg: hsl(217.2 91.2% 59.8%);
+    --toggle-active-glow: rgba(96, 165, 250, 0.35);
+    color-scheme: dark;
   }
+
+  /* ==================== 科技極簡 — 深青灰 + 青綠霓虹 ==================== */
+  .theme-dark-tech {
+    --background: 180 15% 6%;
+    --foreground: 180 10% 90%;
+    --card: 180 20% 10%;
+    --card-foreground: 180 10% 90%;
+    --popover: 180 20% 10%;
+    --popover-foreground: 180 10% 90%;
+    --primary: 174 72% 38%;
+    --primary-foreground: 180 15% 6%;
+    --secondary: 180 15% 14%;
+    --secondary-foreground: 180 10% 90%;
+    --muted: 180 15% 14%;
+    --muted-foreground: 180 8% 55%;
+    --accent: 174 72% 38%;
+    --accent-foreground: 180 15% 6%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 180 10% 90%;
+    --border: 180 15% 16%;
+    --input: 180 15% 14%;
+    --ring: 174 72% 38%;
+    /* 主題強調色 */
+    --theme-accent: 174 72% 38%;
+    --theme-accent-rgb: 40, 160, 130;
+    --theme-accent-soft: 180 20% 14%;
+    /* 毛玻璃 */
+    --glass-bg: rgba(20, 40, 40, 0.65);
+    --glass-border: rgba(40, 160, 130, 0.12);
+    --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 1px rgba(40, 160, 130, 0.1);
+    /* 按鈕 */
+    --btn-primary-bg: hsl(174 72% 38%);
+    --btn-primary-glow: rgba(40, 160, 130, 0.35);
+    --btn-primary-hover: hsl(174 72% 32%);
+    /* 開關 */
+    --toggle-active-bg: hsl(174 72% 38%);
+    --toggle-active-glow: rgba(40, 160, 130, 0.4);
+    /* 迷你膠囊 */
+    --mini-capsule-bg: hsl(180 15% 10%);
+    /* 錄音藥丸指示器 */
+    --pill-recording-bg: hsl(174 72% 38%);
+    --pill-recording-border: hsla(174 72% 50% / 0.5);
+    --pill-cloud-bg: #f5a623;
+    --pill-cloud-border: rgba(255,215,0,0.6);
+    --pill-command-bg: hsl(199 65% 40%);
+    --pill-command-border: hsla(199 65% 50% / 0.5);
+    color-scheme: dark;
+  }
+  .theme-dark-tech .bg-white { background: rgba(20, 40, 40, 0.65) !important; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .theme-dark-tech .bg-gray-50 { background: rgba(20, 40, 40, 0.4) !important; }
+  .theme-dark-tech .shadow-lg { box-shadow: var(--glass-shadow) !important; }
+  .theme-dark-tech .text-gray-900, .theme-dark-tech .text-gray-800 { color: hsl(180 10% 90%) !important; }
+  .theme-dark-tech .brand-title { color: hsl(174 72% 38%) !important; }
+  /* 迷你模式覆寫 — 深色底、全不透明文字 */
+  .theme-dark-tech .bg-white\/95 { background: hsl(180 15% 8%) !important; }
+  .theme-dark-tech .bg-white\/90 { background: hsl(180 15% 10%) !important; }
+  .theme-dark-tech .bg-gray-100 { background: hsl(180 15% 14%) !important; }
+  .theme-dark-tech .bg-sky-100 { background: hsl(180 15% 14%) !important; }
+  .theme-dark-tech .hover\:bg-gray-100:hover { background: hsl(180 15% 20%) !important; }
+  .theme-dark-tech .text-gray-500 { color: hsl(174 72% 38%) !important; }
+  .theme-dark-tech .text-gray-400 { color: hsl(174 72% 30%) !important; }
+  .theme-dark-tech .hover\:text-gray-700:hover { color: hsl(174 72% 70%) !important; }
+  .theme-dark-tech .hover\:text-white:hover { color: hsl(174 72% 70%) !important; }
+  /* 主視窗卡片漸層 — 跟背景一致，消除方框 */
+  .theme-dark-tech .from-slate-50 { --tw-gradient-from: hsl(180 15% 8%) !important; }
+  .theme-dark-tech .to-gray-100 { --tw-gradient-to: hsl(180 15% 12%) !important; }
+
+  /* ==================== 現代優雅 — 淡紫漸層背景 + 毛玻璃 ==================== */
+  .theme-premium-light {
+    --background: 270 40% 94%;
+    --foreground: 270 20% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 270 20% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 270 20% 14%;
+    --primary: 270 76% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 270 30% 92%;
+    --secondary-foreground: 270 20% 14%;
+    --muted: 270 20% 93%;
+    --muted-foreground: 270 10% 40%;
+    --accent: 270 76% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 270 25% 88%;
+    --input: 270 25% 88%;
+    --ring: 270 76% 58%;
+    /* 主題強調色 */
+    --theme-accent: 270 76% 58%;
+    --theme-accent-rgb: 147, 97, 246;
+    --theme-accent-soft: 270 80% 96%;
+    /* 毛玻璃 */
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(147, 97, 246, 0.15);
+    --glass-shadow: 0 4px 24px rgba(147, 97, 246, 0.08), 0 1px 4px rgba(0, 0, 0, 0.03);
+    /* 按鈕 */
+    --btn-primary-bg: hsl(270 76% 58%);
+    --btn-primary-glow: rgba(147, 97, 246, 0.3);
+    --btn-primary-hover: hsl(270 76% 52%);
+    /* 開關 */
+    --toggle-active-bg: hsl(270 76% 58%);
+    --toggle-active-glow: rgba(147, 97, 246, 0.35);
+    /* 迷你膠囊 */
+    --mini-capsule-bg: #ffffff;
+    /* 錄音藥丸指示器 */
+    --pill-recording-bg: hsl(270 76% 58%);
+    --pill-recording-border: hsla(270 76% 68% / 0.5);
+    --pill-cloud-bg: #f5a623;
+    --pill-cloud-border: rgba(255,215,0,0.6);
+    --pill-command-bg: hsl(270 60% 65%);
+    --pill-command-border: hsla(270 60% 75% / 0.5);
+    color-scheme: light;
+  }
+  /* 背景透明 — 卡片自己負責漸層，消除外框 */
+  .theme-premium-light body, .theme-premium-light #root {
+    background: transparent !important;
+  }
+  /* 白色毛玻璃卡片 */
+  .theme-premium-light .bg-white {
+    background: rgba(255, 255, 255, 0.65) !important;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(147, 97, 246, 0.12);
+    box-shadow: 0 4px 24px rgba(147, 97, 246, 0.06);
+  }
+  .theme-premium-light .bg-gray-50 { background: rgba(255, 255, 255, 0.4) !important; }
+  .theme-premium-light .border-gray-200 { border-color: rgba(147, 97, 246, 0.12) !important; }
+  .theme-premium-light .shadow-lg { box-shadow: var(--glass-shadow) !important; }
+  /* 迷你模式膠囊底色 — 純白不透明 */
+  .theme-premium-light .bg-white\/95 { background: #ffffff !important; }
+  .theme-premium-light .bg-gray-100 { background: #f5f0ff !important; }
+  .theme-premium-light .bg-sky-100 { background: #f5f0ff !important; }
+  /* 主視窗卡片漸層 — 跟背景一致，消除方框 */
+  .theme-premium-light .from-slate-50 { --tw-gradient-from: hsl(270 40% 94%) !important; }
+  .theme-premium-light .to-gray-100 { --tw-gradient-to: hsl(260 30% 93%) !important; }
+
+  /* ==================== 清爽科技 — 淡藍漸層背景 + 毛玻璃 ==================== */
+  .theme-light-blue {
+    --background: 210 40% 94%;
+    --foreground: 215 25% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 14%;
+    --primary: 210 92% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 30% 92%;
+    --secondary-foreground: 215 25% 14%;
+    --muted: 210 20% 93%;
+    --muted-foreground: 215 10% 40%;
+    --accent: 210 92% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 25% 88%;
+    --input: 210 25% 88%;
+    --ring: 210 92% 55%;
+    /* 主題強調色 */
+    --theme-accent: 210 92% 55%;
+    --theme-accent-rgb: 59, 130, 246;
+    --theme-accent-soft: 210 100% 96%;
+    /* 毛玻璃 */
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(59, 130, 246, 0.15);
+    --glass-shadow: 0 4px 24px rgba(59, 130, 246, 0.08), 0 1px 4px rgba(0, 0, 0, 0.03);
+    /* 按鈕 */
+    --btn-primary-bg: hsl(210 92% 55%);
+    --btn-primary-glow: rgba(59, 130, 246, 0.3);
+    --btn-primary-hover: hsl(210 92% 49%);
+    /* 開關 */
+    --toggle-active-bg: hsl(210 92% 55%);
+    --toggle-active-glow: rgba(59, 130, 246, 0.35);
+    /* 迷你膠囊 */
+    --mini-capsule-bg: #ffffff;
+    /* 錄音藥丸指示器 */
+    --pill-recording-bg: hsl(210 92% 55%);
+    --pill-recording-border: hsla(210 92% 65% / 0.5);
+    --pill-cloud-bg: #f5a623;
+    --pill-cloud-border: rgba(255,215,0,0.6);
+    --pill-command-bg: hsl(199 89% 60%);
+    --pill-command-border: hsla(199 89% 70% / 0.5);
+    color-scheme: light;
+  }
+  /* 背景透明 — 卡片自己負責漸層，消除外框 */
+  .theme-light-blue body, .theme-light-blue #root {
+    background: transparent !important;
+  }
+  /* 白色毛玻璃卡片 */
+  .theme-light-blue .bg-white {
+    background: rgba(255, 255, 255, 0.65) !important;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(59, 130, 246, 0.12);
+    box-shadow: 0 4px 24px rgba(59, 130, 246, 0.06);
+  }
+  .theme-light-blue .bg-gray-50 { background: rgba(255, 255, 255, 0.4) !important; }
+  .theme-light-blue .border-gray-200 { border-color: rgba(59, 130, 246, 0.12) !important; }
+  .theme-light-blue .shadow-lg { box-shadow: var(--glass-shadow) !important; }
+  /* 迷你模式膠囊底色 — 純白不透明 */
+  .theme-light-blue .bg-white\/95 { background: #ffffff !important; }
+  .theme-light-blue .bg-gray-100 { background: #f0f5ff !important; }
+  .theme-light-blue .bg-sky-100 { background: #f0f5ff !important; }
+  /* 主視窗卡片漸層 — 跟背景一致，消除方框 */
+  .theme-light-blue .from-slate-50 { --tw-gradient-from: hsl(210 40% 94%) !important; }
+  .theme-light-blue .to-gray-100 { --tw-gradient-to: hsl(220 30% 93%) !important; }
+
+  /* ==================== 全域主題過渡 ==================== */
+  :root, .dark, .theme-dark-tech, .theme-premium-light, .theme-light-blue {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+  :root *, .dark *, .theme-dark-tech *, .theme-premium-light *, .theme-light-blue * {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  /* ==================== 主題專用圖示色 ==================== */
+  .theme-dark-tech .text-gray-600, .theme-dark-tech .text-gray-400, .theme-dark-tech .text-gray-500 {
+    color: hsl(174 72% 38%) !important;
+  }
+  .theme-dark-tech .text-gray-700, .theme-dark-tech .text-gray-300 {
+    color: hsl(174 40% 75%) !important;
+  }
+  .theme-premium-light .text-gray-600, .theme-premium-light .text-gray-400, .theme-premium-light .text-gray-500 {
+    color: hsl(270 76% 42%) !important;
+  }
+  .theme-premium-light .text-gray-700, .theme-premium-light .text-gray-300 {
+    color: hsl(270 20% 18%) !important;
+  }
+  .theme-light-blue .text-gray-600, .theme-light-blue .text-gray-400, .theme-light-blue .text-gray-500 {
+    color: hsl(210 92% 35%) !important;
+  }
+  .theme-light-blue .text-gray-700, .theme-light-blue .text-gray-300 {
+    color: hsl(215 25% 18%) !important;
+  }
+
+  /* ==================== 主題專用選擇框 ==================== */
+  .theme-dark-tech select, .theme-dark-tech input[type="text"], .theme-dark-tech input[type="password"], .theme-dark-tech input[type="number"] {
+    border-color: hsl(174 72% 38%) !important;
+    background: hsl(180 15% 12%) !important;
+    color: hsl(180 10% 90%) !important;
+  }
+  .theme-premium-light select, .theme-premium-light input[type="text"], .theme-premium-light input[type="password"], .theme-premium-light input[type="number"] {
+    border-color: hsl(270 76% 58%) !important;
+    background: hsl(0 0% 100%) !important;
+    color: hsl(270 20% 15%) !important;
+  }
+  .theme-light-blue select, .theme-light-blue input[type="text"], .theme-light-blue input[type="password"], .theme-light-blue input[type="number"] {
+    border-color: hsl(210 92% 55%) !important;
+    background: hsl(0 0% 100%) !important;
+    color: hsl(215 25% 15%) !important;
+  }
+
+  /* ==================== 主題專用開關 ==================== */
+  .theme-dark-tech .bg-blue-600 { background: hsl(174 72% 38%) !important; box-shadow: 0 0 10px rgba(40, 160, 130, 0.3); }
+  .theme-premium-light .bg-blue-600 { background: hsl(270 76% 58%) !important; box-shadow: 0 0 10px rgba(147, 97, 246, 0.3); }
+  .theme-light-blue .bg-blue-600 { background: hsl(210 92% 55%) !important; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+
+  /* ==================== 主題專用按鈕光暈 ==================== */
+  .theme-dark-tech button.bg-blue-500, .theme-dark-tech button.bg-blue-600, .theme-dark-tech .btn-primary {
+    background: hsl(174 72% 38%) !important;
+    box-shadow: 0 2px 8px rgba(40, 160, 130, 0.2);
+  }
+  .theme-dark-tech button.bg-blue-500:hover, .theme-dark-tech button.bg-blue-600:hover, .theme-dark-tech .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(40, 160, 130, 0.35);
+  }
+  .theme-premium-light button.bg-blue-500, .theme-premium-light button.bg-blue-600, .theme-premium-light .btn-primary {
+    background: hsl(270 76% 58%) !important;
+    box-shadow: 0 2px 8px rgba(147, 97, 246, 0.2);
+  }
+  .theme-premium-light button.bg-blue-500:hover, .theme-premium-light button.bg-blue-600:hover, .theme-premium-light .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(147, 97, 246, 0.35);
+  }
+  .theme-light-blue button.bg-blue-500, .theme-light-blue button.bg-blue-600, .theme-light-blue .btn-primary {
+    background: hsl(210 92% 55%) !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+  }
+  .theme-light-blue button.bg-blue-500:hover, .theme-light-blue button.bg-blue-600:hover, .theme-light-blue .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
+  }
+
+  /* ==================== 主題專用錄音按鈕 ==================== */
+  .theme-dark-tech .bg-red-500 { background: hsl(174 72% 38%) !important; box-shadow: 0 0 12px rgba(40, 160, 130, 0.4); }
+  .theme-premium-light .bg-red-500 { background: hsl(270 76% 58%) !important; box-shadow: 0 0 12px rgba(147, 97, 246, 0.4); }
+  .theme-light-blue .bg-red-500 { background: hsl(210 92% 55%) !important; box-shadow: 0 0 12px rgba(59, 130, 246, 0.4); }
 }
+
+/* ==================== 迷你膠囊底色 — 跟隨主題變數 ==================== */
+.mini-capsule { background-color: var(--mini-capsule-bg); }
+
+/* ==================== 錄音藥丸指示器 — 跟隨主題變數 ==================== */
+.pill-recording { background-color: var(--pill-recording-bg); border: 1px solid var(--pill-recording-border); }
+.pill-cloud {
+  background: linear-gradient(135deg, #d4920a, #f5a623, #ffd700, #f5a623, #d4920a);
+  background-size: 300% 300%;
+  animation: gold-shimmer 2.5s ease-in-out infinite;
+  border: 1px solid var(--pill-cloud-border);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.35), 0 0 24px rgba(245, 166, 35, 0.15);
+  position: relative;
+  overflow: visible;
+}
+.pill-command { background-color: var(--pill-command-bg); border: 1px solid var(--pill-command-border); }
+
+/* ==================== 迷你膠囊錄音圖標 — 跟隨主題變數 ==================== */
+.mini-capsule-icon-recording { background-color: var(--pill-recording-bg); }
+.mini-capsule-icon-cloud {
+  background: linear-gradient(135deg, #d4920a, #f5a623, #ffd700, #f5a623, #d4920a);
+  background-size: 300% 300%;
+  animation: gold-shimmer 2.5s ease-in-out infinite, gold-glow 1.8s ease-in-out infinite;
+  position: relative;
+}
+.mini-capsule-icon-command { background-color: var(--pill-command-bg); }
+.mini-capsule-icon-command-idle { background-color: color-mix(in srgb, var(--pill-command-bg) 25%, transparent); }
+.mini-capsule-text-recording { color: var(--pill-recording-bg); }
+.mini-capsule-text-cloud { color: #d4920a; text-shadow: 0 0 8px rgba(255, 215, 0, 0.3); }
+.mini-capsule-text-command { color: var(--pill-command-bg); }
+.mini-capsule-border-command { border-color: var(--pill-command-bg); }
+
+/* ==================== 雲端 ASR 金幣飄動粒子 ==================== */
+.coin-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffd700 30%, #f5a623 70%, transparent);
+  pointer-events: none;
+  z-index: 10;
+}
+.coin-particle:nth-child(1) {
+  width: 5px; height: 5px;
+  top: -2px; right: 2px;
+  animation: coin-float-a 1.6s ease-out infinite;
+}
+.coin-particle:nth-child(2) {
+  width: 4px; height: 4px;
+  top: 4px; right: -1px;
+  animation: coin-float-b 2s ease-out infinite 0.4s;
+}
+.coin-particle:nth-child(3) {
+  width: 3px; height: 3px;
+  top: 0; right: 6px;
+  animation: coin-float-c 1.8s ease-out infinite 0.9s;
+}
+.coin-particle:nth-child(4) {
+  width: 4px; height: 4px;
+  top: 6px; right: 4px;
+  animation: coin-float-a 2.2s ease-out infinite 1.3s;
+}
+
+/* ==================== 浮動藥丸金幣粒子 ==================== */
+.pill-cloud .coin-particle:nth-child(1) {
+  width: 6px; height: 6px;
+  top: -4px; left: 12px;
+  animation: coin-float-pill-a 2s ease-out infinite;
+}
+.pill-cloud .coin-particle:nth-child(2) {
+  width: 5px; height: 5px;
+  top: 2px; right: 8px;
+  animation: coin-float-pill-b 2.4s ease-out infinite 0.6s;
+}
+.pill-cloud .coin-particle:nth-child(3) {
+  width: 4px; height: 4px;
+  bottom: -3px; left: 20px;
+  animation: coin-float-pill-c 1.8s ease-out infinite 1.1s;
+}
+
+@keyframes gold-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes gold-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 215, 0, 0.3), 0 0 12px rgba(245, 166, 35, 0.1); }
+  50% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.6), 0 0 28px rgba(245, 166, 35, 0.25), 0 0 4px 1px rgba(255, 215, 0, 0.15); }
+}
+@keyframes coin-float-a {
+  0% { transform: translateY(0) scale(1); opacity: 0.9; }
+  60% { opacity: 0.6; }
+  100% { transform: translateY(-18px) translateX(3px) scale(0.3); opacity: 0; }
+}
+@keyframes coin-float-b {
+  0% { transform: translateY(0) scale(1); opacity: 0.8; }
+  100% { transform: translateY(-14px) translateX(-2px) scale(0.2); opacity: 0; }
+}
+@keyframes coin-float-c {
+  0% { transform: translateY(0) scale(1); opacity: 0.7; }
+  100% { transform: translateY(-16px) translateX(1px) scale(0.4); opacity: 0; }
+}
+@keyframes coin-float-pill-a {
+  0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.85; }
+  100% { transform: translateY(-22px) rotate(180deg) scale(0.2); opacity: 0; }
+}
+@keyframes coin-float-pill-b {
+  0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.75; }
+  100% { transform: translateY(-18px) rotate(-120deg) scale(0.3); opacity: 0; }
+}
+@keyframes coin-float-pill-c {
+  0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.8; }
+  100% { transform: translateY(-20px) rotate(90deg) scale(0.15); opacity: 0; }
+}
+
+/* ==================== 滑桿強調色 — 跟隨主題 ==================== */
+.slider-accent { accent-color: hsl(var(--theme-accent)); }
+
+/* ==================== 極夜青森迷你膠囊副標題 — 提高亮度 ==================== */
+.theme-dark-tech .mini-capsule .mini-capsule-subtitle { color: hsl(174 40% 75%) !important; }
 
 @layer base {
   * {
@@ -122,7 +560,7 @@ html, body {
   font-weight: 700;
 }
 
-/* 品牌名稱專用樣式 - 聲聲慢（使用源雲明體） */
+/* 品牌名稱專用樣式 - 說打兔（使用源雲明體） */
 .brand-title {
   font-family: 'GenWan', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif;
   font-weight: 500;

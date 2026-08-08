@@ -247,8 +247,9 @@ def add_punctuation(text):
 
 
 class SherpaServer:
-    def __init__(self, model_dir=None):
-        self.recognizer = None  # 離線辨識器 (Paraformer)
+    def __init__(self, model_dir=None, model_type="paraformer"):
+        self.recognizer = None  # 離線辨識器
+        self.model_type = model_type
         self.streaming_recognizer = None  # 串流辨識器 (Zipformer)
         self.vad = None  # Silero VAD 模型
         self.whisper_recognizer = None  # Whisper small（精準/重辨救援，延遲載入）
@@ -360,13 +361,13 @@ class SherpaServer:
     def _find_model_dir(self):
         """尋找 sherpa-onnx 離線模型目錄 (Paraformer)"""
         # 優先查找 poc-sherpa 目錄
-        poc_model = os.path.join(self._poc_sherpa_dir(), "sherpa-onnx-paraformer-zh-2023-09-14")
+        poc_model = os.path.join(self._poc_sherpa_dir(), "sherpa-onnx-paraformer-zh-small-2024-03-09")
         if os.path.exists(poc_model):
             return poc_model
 
         # 查找用戶緩存目錄
         cache_dir = os.path.expanduser("~/.cache/sherpa-onnx")
-        model_name = "sherpa-onnx-paraformer-zh-2023-09-14"
+        model_name = "sherpa-onnx-paraformer-zh-small-2024-03-09"
         cache_model = os.path.join(cache_dir, model_name)
         if os.path.exists(cache_model):
             return cache_model
@@ -806,40 +807,102 @@ class SherpaServer:
             logger.info(f"正在初始化 sherpa-onnx，模型目錄: {self.model_dir}")
 
             # 檢查模型文件
-            model_path = os.path.join(self.model_dir, "model.int8.onnx")
-            tokens_path = os.path.join(self.model_dir, "tokens.txt")
-
-            if not os.path.exists(model_path):
-                return {
-                    "success": False,
-                    "error": f"模型文件不存在: {model_path}",
-                    "type": "models_not_downloaded"
-                }
-
-            if not os.path.exists(tokens_path):
-                return {
-                    "success": False,
-                    "error": f"詞表文件不存在: {tokens_path}",
-                    "type": "models_not_downloaded"
-                }
+            if self.model_type == "whisper":
+                encoder_path = os.path.join(self.model_dir, "small-encoder.int8.onnx")
+                decoder_path = os.path.join(self.model_dir, "small-decoder.int8.onnx")
+                tokens_path = os.path.join(self.model_dir, "small-tokens.txt")
+                if not (os.path.exists(encoder_path) and os.path.exists(decoder_path) and os.path.exists(tokens_path)):
+                    return {
+                        "success": False,
+                        "error": f"Whisper 模型檔案不齊全，路徑: {self.model_dir}",
+                        "type": "models_not_downloaded"
+                    }
+            elif self.model_type == "qwen3_asr":
+                conv_path_q = os.path.join(self.model_dir, "conv_frontend.onnx")
+                encoder_path_q = os.path.join(self.model_dir, "encoder.int8.onnx")
+                decoder_path_q = os.path.join(self.model_dir, "decoder.int8.onnx")
+                tokenizer_dir_q = os.path.join(self.model_dir, "tokenizer")
+                if not (os.path.exists(conv_path_q) and os.path.exists(encoder_path_q) and os.path.exists(decoder_path_q) and os.path.isdir(tokenizer_dir_q)):
+                    return {
+                        "success": False,
+                        "error": f"Qwen3-ASR 模型檔案不齊全，路徑: {self.model_dir}",
+                        "type": "models_not_downloaded"
+                    }
+            elif self.model_type == "breeze_asr_25":
+                breeze_enc = os.path.join(self.model_dir, "breeze-asr-25-half-encoder.int8.onnx")
+                breeze_dec = os.path.join(self.model_dir, "breeze-asr-25-half-decoder.int8.onnx")
+                breeze_tok = os.path.join(self.model_dir, "breeze-asr-25-half-tokens.txt")
+                if not (os.path.exists(breeze_enc) and os.path.exists(breeze_dec) and os.path.exists(breeze_tok)):
+                    return {
+                        "success": False,
+                        "error": f"Breeze-ASR-25 模型檔案不齊全，路徑: {self.model_dir}",
+                        "type": "models_not_downloaded"
+                    }
+            else:
+                model_path = os.path.join(self.model_dir, "model.int8.onnx")
+                tokens_path = os.path.join(self.model_dir, "tokens.txt")
+                if not (os.path.exists(model_path) and os.path.exists(tokens_path)):
+                    return {
+                        "success": False,
+                        "error": f"模型檔案不齊全，路徑: {self.model_dir}",
+                        "type": "models_not_downloaded"
+                    }
 
             import sherpa_onnx
 
             # 創建識別器（使用動態執行緒數 + 可選 GPU 加速）
             def _build_offline(provider):
-                return sherpa_onnx.OfflineRecognizer.from_paraformer(
-                    paraformer=model_path,
-                    tokens=tokens_path,
-                    num_threads=self.num_threads,
-                    sample_rate=16000,
-                    feature_dim=80,
-                    decoding_method="greedy_search",
-                    provider=provider,
-                )
+                if self.model_type == "sense_voice":
+                    return sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                        model=os.path.join(self.model_dir, "model.int8.onnx"),
+                        tokens=os.path.join(self.model_dir, "tokens.txt"),
+                        num_threads=self.num_threads,
+                        use_itn=True,
+                        provider=provider,
+                    )
+                elif self.model_type == "whisper":
+                    return sherpa_onnx.OfflineRecognizer.from_whisper(
+                        encoder=os.path.join(self.model_dir, "small-encoder.int8.onnx"),
+                        decoder=os.path.join(self.model_dir, "small-decoder.int8.onnx"),
+                        tokens=os.path.join(self.model_dir, "small-tokens.txt"),
+                        num_threads=self.num_threads,
+                        language="zh",
+                        task="transcribe",
+                        provider=provider,
+                    )
+                elif self.model_type == "qwen3_asr":
+                    return sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
+                        conv_frontend=os.path.join(self.model_dir, "conv_frontend.onnx"),
+                        encoder=os.path.join(self.model_dir, "encoder.int8.onnx"),
+                        decoder=os.path.join(self.model_dir, "decoder.int8.onnx"),
+                        tokenizer=os.path.join(self.model_dir, "tokenizer"),
+                        num_threads=self.num_threads,
+                        provider=provider,
+                    )
+                elif self.model_type == "breeze_asr_25":
+                    return sherpa_onnx.OfflineRecognizer.from_whisper(
+                        encoder=os.path.join(self.model_dir, "breeze-asr-25-half-encoder.int8.onnx"),
+                        decoder=os.path.join(self.model_dir, "breeze-asr-25-half-decoder.int8.onnx"),
+                        tokens=os.path.join(self.model_dir, "breeze-asr-25-half-tokens.txt"),
+                        num_threads=self.num_threads,
+                        language="zh",
+                        task="transcribe",
+                        provider=provider,
+                    )
+                else:
+                    return sherpa_onnx.OfflineRecognizer.from_paraformer(
+                        paraformer=os.path.join(self.model_dir, "model.int8.onnx"),
+                        tokens=os.path.join(self.model_dir, "tokens.txt"),
+                        num_threads=self.num_threads,
+                        sample_rate=16000,
+                        feature_dim=80,
+                        decoding_method="greedy_search",
+                        provider=provider,
+                    )
 
             try:
                 self.recognizer = _build_offline(self.provider)
-                logger.info(f"離線辨識器建立成功，provider={self.provider}")
+                logger.info(f"離線辨識器建立成功，type={self.model_type}，provider={self.provider}")
             except Exception as e:
                 if self.provider != "cpu":
                     logger.warning(f"provider={self.provider} 初始化失敗，回退至 CPU: {e}")
@@ -1859,8 +1922,7 @@ class SherpaServer:
                 elif action == "get_hotwords":
                     result = self.get_hotwords()
                 elif action == "set_hotwords":
-                    config = command.get("config", {})
-                    result = self.set_hotwords(config)
+                    result = self.set_hotwords(command)
                 # ================================
                 elif action == "exit":
                     result = {"success": True, "message": "服務器退出"}
@@ -1903,7 +1965,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=str, default=None,
                         help="sherpa-onnx 模型目錄")
+    parser.add_argument("--model-type", type=str, default="paraformer",
+                        choices=["paraformer", "sense_voice", "whisper", "qwen3_asr", "breeze_asr_25"],
+                        help="sherpa-onnx 模型類型")
     args = parser.parse_args()
 
-    server = SherpaServer(model_dir=args.model_dir)
+    server = SherpaServer(model_dir=args.model_dir, model_type=args.model_type)
     server.run()

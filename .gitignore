@@ -38,6 +38,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+dev.log
 funasr_bridge.log
 funasr_server.log
 
@@ -142,6 +143,9 @@ cache/
 *.sqlite
 *.sqlite3
 
+# SSL certificates
+ssl/
+
 # Temporary files
 tmp/
 temp/
@@ -168,3 +172,23 @@ build_pyi/
 *.spec
 hotwords.txt.active
 poc-sherpa/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/
+
+# 下載的模型檔案（體積大，不入庫）
+model/
+
+# Rust native addon 建置產物（target/ 為 cargo 輸出）
+native/mute-native/target/
+
+# 開發/測試用暫存腳本（含絕對路徑，不入庫）
+patch_settings.js
+patch_settings.py
+test_mute.bat
+test_mute.ps1
+test_mute2.ps1
+test_vtable.ps1
+
+# 內部計畫文件
+docs/superpowers/
+
+# 內建提示詞參考文件（不入庫）
+提示詞.md

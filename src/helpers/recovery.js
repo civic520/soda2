@@ -17,8 +17,12 @@ function begin() {
   try {
     end(); // 收掉上一條（保險）
     const p = pcmPath();
-    try { fs.unlinkSync(p); } catch (e) { /* 不存在 */ }
-    _stream = fs.createWriteStream(p, { flags: "a" });
+    // 使用寫入空檔來清空暫存，不使用 unlinkSync，避免 Windows 上的 EPERM (鎖定或待刪除) 錯誤
+    try { fs.writeFileSync(p, Buffer.alloc(0)); } catch (e) { /* ignore */ }
+    _stream = fs.createWriteStream(p, { flags: "w" });
+    _stream.on("error", (err) => {
+      console.error("Recovery stream error:", err);
+    });
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -28,7 +32,12 @@ function begin() {
 function append(b64) {
   try {
     if (!b64) return { success: true };
-    if (!_stream) _stream = fs.createWriteStream(pcmPath(), { flags: "a" });
+    if (!_stream) {
+      _stream = fs.createWriteStream(pcmPath(), { flags: "a" });
+      _stream.on("error", (err) => {
+        console.error("Recovery stream error:", err);
+      });
+    }
     _stream.write(Buffer.from(b64, "base64"));
     return { success: true };
   } catch (e) {
@@ -36,11 +45,15 @@ function append(b64) {
   }
 }
 
-// 正常停止 / 取消：關掉串流並刪掉暫存（這段已正常處理過，不是孤兒）
+// 正常停止 / 取消：關掉串流並清空暫存（這段已正常處理過，不是孤兒）
 function end() {
   try {
-    if (_stream) { try { _stream.end(); } catch (e) {} _stream = null; }
-    try { fs.unlinkSync(pcmPath()); } catch (e) { /* 不存在 */ }
+    if (_stream) { 
+      try { _stream.end(); } catch (e) {} 
+      _stream = null; 
+    }
+    const p = pcmPath();
+    try { fs.writeFileSync(p, Buffer.alloc(0)); } catch (e) { /* 不存在 */ }
     return { success: true };
   } catch (e) {
     return { success: false };
@@ -75,7 +88,7 @@ function recoverOnStartup(databaseManager, logger) {
     const p = pcmPath();
     if (!fs.existsSync(p)) return;
     const pcm = fs.readFileSync(p);
-    try { fs.unlinkSync(p); } catch (e) {}
+    try { fs.writeFileSync(p, Buffer.alloc(0)); } catch (e) {}
     // 門檻：至少約 1.5 秒（16000 樣本/秒 × 2 bytes × 1.5），太短不值得救
     if (!pcm || pcm.length < 48000) return;
 
@@ -103,4 +116,74 @@ function recoverOnStartup(databaseManager, logger) {
   }
 }
 
-module.exports = { begin, append, end, recoverOnStartup };
+function safeUnlink(filePath, logger) {
+  try {
+    if (!fs.existsSync(filePath)) return;
+    fs.unlinkSync(filePath);
+  } catch (e) {
+    try {
+      fs.chmodSync(filePath, 0o666);
+      fs.unlinkSync(filePath);
+    } catch (e2) {
+      try {
+        const { execSync } = require("child_process");
+        if (process.platform === "win32") {
+          execSync(`attrib -R "${filePath}"`, { timeout: 2000 });
+          execSync(`del /F /Q /A "${filePath}"`, { timeout: 2000 });
+        } else {
+          fs.unlinkSync(filePath);
+        }
+      } catch (e3) {
+        if (logger && logger.warn) {
+          logger.warn(`[Cleanup] 無法刪除檔案 ${filePath}: ${e3.message || e3}`);
+        }
+      }
+    }
+  }
+}
+
+function cleanOldRecordings(databaseManager, logger) {
+  try {
+    if (!databaseManager || !databaseManager.db) return;
+    const retentionDays = Number(databaseManager.getSetting("audio_retention_days", 30));
+    if (!retentionDays || retentionDays <= 0) {
+      if (logger && logger.info) logger.info("[Cleanup] 錄音保留期限設定為永久，跳過自動清理");
+      return;
+    }
+
+    if (logger && logger.info) logger.info(`[Cleanup] 開始清理超過 ${retentionDays} 天的舊錄音檔...`);
+
+    const selectStmt = databaseManager.db.prepare(
+      "SELECT id, audio_path FROM transcriptions WHERE audio_path IS NOT NULL AND created_at < datetime('now', '-' || ? || ' days')"
+    );
+    const oldRecords = selectStmt.all(retentionDays);
+
+    if (oldRecords.length === 0) {
+      if (logger && logger.info) logger.info("[Cleanup] 沒有需要清理的舊錄音檔");
+      return;
+    }
+
+    const updateStmt = databaseManager.db.prepare(
+      "UPDATE transcriptions SET audio_path = NULL WHERE id = ?"
+    );
+
+    let cleanedCount = 0;
+    for (const record of oldRecords) {
+      if (record.audio_path) {
+        safeUnlink(record.audio_path, logger);
+      }
+      updateStmt.run(record.id);
+      cleanedCount++;
+    }
+
+    if (logger && logger.info) {
+      logger.info(`[Cleanup] 舊錄音檔清理完成，共清理 ${cleanedCount} 筆資料`);
+    }
+  } catch (err) {
+    if (logger && logger.warn) {
+      logger.warn("[Cleanup] 自動清理舊錄音檔失敗:", err.message || err);
+    }
+  }
+}
+
+module.exports = { begin, append, end, recoverOnStartup, cleanOldRecordings };

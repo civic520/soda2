@@ -75,7 +75,9 @@ class PythonResolver {
         });
     }
 
-    delete process.env.PYTHONUSERBASE;
+    if (isUsingEmbedded) {
+      delete process.env.PYTHONUSERBASE;
+    }
     delete process.env.PYTHONSTARTUP;
     delete process.env.VIRTUAL_ENV;
   }
@@ -136,7 +138,9 @@ class PythonResolver {
       }
     }
 
-    delete env.PYTHONUSERBASE;
+    if (isUsingEmbedded) {
+      delete env.PYTHONUSERBASE;
+    }
     delete env.PYTHONSTARTUP;
     delete env.VIRTUAL_ENV;
 
@@ -208,9 +212,9 @@ class PythonResolver {
       path.join(projectRoot, ".venv", "bin", "python3"),
       path.join(projectRoot, ".venv", "bin", "python"),
       // 系統路徑
-      "python3.11",
-      "python3",
       "python",
+      "python3",
+      "python3.11",
       "/usr/bin/python3.11",
       "/usr/bin/python3",
       "/usr/local/bin/python3.11",

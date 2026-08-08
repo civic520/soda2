@@ -28,6 +28,13 @@ export default {
     notificationsDesc: '控制是否显示操作成功等提示通知',
     language: '界面语言',
     languageDesc: '选择应用界面显示的语言',
+    appTheme: '应用主题',
+    appThemeDesc: '选择软件的外观风格',
+    appThemeChanged: '主题已切换',
+    themeSystem: '跟随系统',
+    themePremiumLight: '现代优雅（粉雾微渐层）',
+    themeDarkTech: '极夜青森（深青绿高对比）',
+    themeZenNatural: '清爽科技（淡蓝渐层玻璃）',
     micDevice: '麦克风',
     micDeviceDesc: '指定收音的麦克风；选错或收不到声音会导致识别乱跳/重复。',
     micDeviceDefault: '系统默认',
@@ -46,6 +53,7 @@ export default {
     typelessTriggerDesc: '按一下开始录音、再按一下停止。若默认键跟其他软件冲突，可改用功能键（Mac 没有右 Ctrl，建议用 F8～F10）。',
     typelessTriggerChanged: '已更新触发键',
     typelessTriggerDefault: '右 Alt + 右 Ctrl（默认）',
+    typelessTriggerDefaultMac: '右 Option（默认）',
     typelessTriggerCtrlRight: '右 Ctrl',
     typelessTriggerAltRight: '右 Alt',
     autoFormatLists: '自动列点',
@@ -53,7 +61,9 @@ export default {
     autoLineBreak: '依停顿自动分行',
     autoLineBreakDesc: '讲话停顿较久时自动换行。默认关闭（中途想一下不会被误断成多行）。',
     asrProfile: '性能模式',
-    asrProfileDesc: '老电脑选「快速」：识别快 2~3 倍，精度略降',
+    asrProfileDesc: '内置 Paraformer 专用。非默认模型启用时将自动切换回内置模型。',
+    asrProfileLevel: '模式等级',
+    asrProfileLevelDesc: '老电脑选「快速」：识别快 2~3 倍，精度略降',
     asrProfileStandard: '标准（最准）',
     asrProfileFast: '快速（弱电脑）',
     asrProfileChanged: '性能模式已切换，下次识别生效',
@@ -76,7 +86,11 @@ export default {
     enableAI: '启用AI文本优化',
     apiKey: 'API Key',
     apiKeyPlaceholder: '请输入您的AI API Key',
+    apiKeyOptional: '选填（本地 LLM 免密钥）',
     apiKeyDesc: '用于AI文本优化功能的API密钥',
+    aiProvider: 'AI 模型商',
+    fetchModels: '整理模型列表',
+    availableModels: '可用模型（点击选用）',
     aiSetupHelp: '不知道怎么设置？看教程',
     baseUrl: 'API Base URL',
     baseUrlDesc: 'AI服务的API端点地址，支持OpenAI兼容的API',
@@ -105,6 +119,23 @@ export default {
       qwenFast: 'Qwen2.5 3B (更快)'
     },
 
+    aiStylePack: 'AI 风格包',
+    aiStylePackDesc: '自定义 AI 润色提示词风格，可建立多组随时切换',
+    aiStylePackBuiltin: '内置',
+    aiStylePackNew: '+ 新建风格包',
+    aiStylePackEdit: '编辑风格包',
+    aiStylePackDelete: '删除',
+    aiStylePackDeleteConfirm: '确定删除「{name}」？',
+    aiStylePackName: '风格包名称',
+    aiStylePackNamePlaceholder: '输入风格包名称',
+    aiStylePackPrompt: '提示词模板（使用 ${text} 作为语音文字的占位符）',
+    aiStylePackMode: '模式',
+    aiStylePackSaveSuccess: '风格包已保存',
+    aiStylePackDeleteSuccess: '风格包已删除',
+    aiStylePackApplied: '已套用风格包：{name}',
+    aiStylePackSaved: '风格包已保存并套用',
+    aiStylePackNameRequired: '请输入风格包名称',
+
     testConfig: '测试设置',
     testConfigDesc: '测试当前编辑的设置（无需保存）',
     testing: '测试中...',
@@ -118,10 +149,11 @@ export default {
     saveSuccess: '设置保存成功',
     saveFailed: '保存设置失败',
     loadFailed: '加载设置失败',
+    statusSaved: '已保存设置',
 
     about: '关于声声慢',
     aboutDesc: '基于 Sherpa-ONNX 和 AI 的简体中文语音转文字应用',
-    brandFull: '声声慢 (SpeakSlow)',
+    brandFull: '说打兔 (soda2)',
     features: {
       recognition: '高精度中文语音识别',
       ai: 'AI智能文本优化',
@@ -132,14 +164,35 @@ export default {
     // 设置窗口左侧分页
     tabs: {
       general: '一般设置',
+      models: '模型选择',
       history: '历史记录',
       ai: 'AI 文本优化',
+      aiStylePack: 'AI 风格包',
       hotkeys: '快捷键',
       hotwords: '热词',
       dictionary: '字典',
       emoji: '符号',
       permissions: '权限管理',
       about: '关于'
+    },
+    style: {
+      title: 'AI 风格包调色盘',
+      description: '通过组合核心主提示词、不同情境的修饰模式、领域专有名词卡与自定义规则，动态编译出最完美的 AI 润饰效果。',
+      tabs: {
+        mainPrompt: '主 Prompt',
+        modes: '修饰模式',
+        hotwords: '热词',
+        dicts: '专业词库',
+        customRules: '自定义规则',
+        backup: '备份与还原'
+      },
+      toast: {
+        changesApplied: '设置已应用至 AI 润饰系统',
+        confirmDelete: '您确定要删除此自定义项目吗？此操作不可逆。',
+        itemDeleted: '自定义项目已成功删除',
+        confirmReset: '确定要重置此默认项目为出厂内容吗？',
+        resetDone: '已重置为默认模板内容'
+      }
     },
     emoji: {
       title: '语音符号',
@@ -175,11 +228,51 @@ export default {
     streamingModelDownloaded: '流式模型下载完成',
     streamingModelDownloadFailed: '流式模型下载失败: {error}',
 
+    // 声音反馈
+    soundFeedback: '声音反馈',
+    soundFeedbackDesc: '录音时播放提示音与控制系统音频',
+    soundFeedbackToggle: '录音提示音',
+    soundFeedbackToggleDesc: '开始与结束录音时播放提示音效',
+    soundFeedbackVolume: '音量',
+    soundFeedbackVolumeDesc: '调整录音提示音的大小',
+    soundTheme: '音效主题',
+    soundThemeDesc: '选择录音提示音的音效组',
+    testSound: '测试音效',
+    testSoundDesc: '预览目前选择的音效主题',
+    testSoundPlay: '▶ 播放',
+    muteWhileRecording: '录音时静音',
+    muteWhileRecordingDesc: '录音期间暂时将系统音频静音',
+    soundEnabled: '录音提示音已开启',
+    soundDisabled: '录音提示音已关闭',
+    muteWhileRecordingEnabled: '录音时将静音系统音频',
+    muteWhileRecordingDisabled: '录音时不再静音系统音频',
+
     // 窗口控制
     windowControl: '🪟 窗口控制',
     windowControlDesc: '设置窗口置顶与系统托盘行为',
     windowOpacity: '窗口透明度',
     windowOpacityDesc: '让面板半透明（迷你与一般面板共用），看得到底下的东西',
+    saveAudioFiles: '保存录音档',
+    saveAudioFilesDesc: '关闭后语音输入不再把音档写进磁碟（省 SSD、不留存；代价是这些无法「重新辨识」）',
+    audioRetention: '录音保留期限',
+    audioRetentionDesc: '开机自动清掉超过期限的旧录音，避免无限增长占空间',
+    saveAudio: '保存录音档',
+    saveAudioDesc: '存下录音以便日后「重新识别」。关掉可减少 SSD 写入、不留存录音（但这些就无法重识）。',
+    audioRetentionChanged: '已更新保留期限',
+    retentionDays: '保留 {n} 天',
+    retentionForever: '永久保留',
+    autoStart: '随开机自动启动',
+    autoStartDesc: 'Windows / macOS 启动时自动背景执行 soda2',
+    autoStartMinimized: '开机启动时缩小至托盘',
+    autoStartMinimizedDesc: '随系统启动时保持隐藏，不弹出主面板干扰工作',
+    autoStartEnabled: '已启用开机自启动',
+    autoStartDisabled: '已关闭开机自启动',
+    autoStartMinimizedEnabled: '开机后将缩小至系统托盘',
+    autoStartMinimizedDisabled: '开机后将显示主面板',
+    retention7: '7 天',
+    retention30: '30 天',
+    retention90: '90 天',
+    retentionPermanent: '永久',
     commandSection: '操作模式 / 朗读',
     commandSectionDesc: '语音指令模式（Ctrl+Shift+K 切换）的朗读语音与行为',
     openNotes: '打开笔记',
@@ -218,13 +311,13 @@ export default {
 
     // 关于分页
     aboutTab: {
-      brandSub: 'SpeakSlow',
+      brandSub: 'soda2',
       logoAlt: '声声慢 logo',
-      tagline: '专为中文打造、最快的本地语音输入 · 免费、隐私',
-      authorTitle: '作者',
-      authorPrefix: '由 ',
+      tagline: '最快的本地語音與線上輸入 · 免費、自由選擇',
+
+      authorPrefix: '本專案於\n',
       authorName: '切版职人',
-      authorSuffix: ' 开发维护。',
+      authorSuffix: ' 開發的聲聲慢為基礎，新增些許功能',
       acknowledgements: '致谢',
       ackQuqu: '原始项目，本项目在其基础上改用 sherpa-onnx 引擎并重做 UI 与交互。',
       ackSherpa: '本地语音识别引擎。',
@@ -266,7 +359,21 @@ export default {
         toggleCommandMode: {
           name: '切换操作模式',
           description: '开／关语音指令模式（操作模式）'
+        },
+        typelessBackupStop: {
+          name: 'TypeLess 备用停止',
+          description: '当右 Alt/右 Ctrl 因系统高负载或录屏无法停止录音时，按此键强制停止'
         }
+      },
+      aiOptimizeTrigger: {
+        title: 'AI 优化录音触发键',
+        description: '按此键开始录音并启用 AI 文字优化，再按一次停止',
+        none: '停用',
+        altRight: '右 Alt',
+        ctrlRight: '右 Ctrl',
+        f11: 'F11',
+        f12: 'F12',
+        tip: '与快速录音键（右 Alt/右 Ctrl）不冲突，可分配不同按键'
       }
     },
 
@@ -481,7 +588,7 @@ export default {
       unitChars: '字',
       unitSpeed: '字/分',
       hourUnit: '时',
-      localOnly: '🔒 数据只存在本机 · 声声慢 SpeakSlow'
+      localOnly: '🔒 数据只存在本机 · 说打兔 soda2'
     },
     dailyChart: {
       title: '每日字数・近 14 天',
@@ -547,6 +654,7 @@ export default {
     asrPreparing: '正在准备语音识别服务，请稍候...',
     browserNoRecording: '您的浏览器不支持录音功能',
     cannotStartRecording: '无法开始录音: {error}',
+    micInitializing: '麦克风启动中，请稍后再试',
     emptyRecording: '录音数据为空，请重新录音',
     recordingTooShort: '录音时间太短，请说话后再停止录音',
     audioProcessingFailed: '音频处理失败: {error}',
@@ -595,7 +703,8 @@ export default {
     modelNotReady: '模型未就绪，请稍候...',
     languageChanged: '语言已切换',
     clickTarget: '请点击要粘贴文本的位置',
-    cancelled: '已取消'
+    cancelled: '已取消',
+    emergencyReset: '紧急重置：已停止录音并重置热键状态 (Ctrl+Shift+F9)'
   },
 
   // 语言选项

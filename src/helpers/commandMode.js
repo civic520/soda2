@@ -6,7 +6,7 @@ const { speakSapi } = require("./tts");
 
 // 「記下來」：把選取 append 到固定筆記檔（markdown），附時間戳
 function notesPath() {
-  return nodePath.join(app.getPath("userData"), "speakslow-notes.md");
+  return nodePath.join(app.getPath("userData"), "soda2-notes.md");
 }
 function appendNote(text) {
   try {

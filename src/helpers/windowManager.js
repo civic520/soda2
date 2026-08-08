@@ -74,6 +74,8 @@ class WindowManager {
       }
     }
 
+    const startHidden = process.argv.includes("--hidden") || process.argv.includes("-h");
+
     this.mainWindow = new BrowserWindow({
       width: 472,
       height: 470,
@@ -83,11 +85,27 @@ class WindowManager {
       resizable: false,
       skipTaskbar: true,
       movable: true,
+      show: !startHidden,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, "..", "..", "preload.js"),
+        autoplayPolicy: "no-user-gesture-required",
       },
+    });
+
+    // 縮放自癒（主面板歪掉的真兇）：面板是固定 472px 的視窗，網頁縮放一旦被誤觸
+    // 改掉（Ctrl+滾輪——錄音熱鍵就是右 Ctrl，按著時滾輪滾到面板上就中），Chromium
+    // 會「按網域記住」縮放值，重開 app 也不會還原 → 版面整個擠爛（標題直排、
+    // 按鈕爆版），怎麼重啟都歪。每次載入完強制 100%，並擋掉縮放事件，永絕後患。
+    this.mainWindow.webContents.on("did-finish-load", () => {
+      try { this.mainWindow.webContents.setZoomFactor(1); } catch (e) { /* ignore */ }
+    });
+    this.mainWindow.webContents.on("zoom-changed", (event) => {
+      try {
+        event.preventDefault();
+        this.mainWindow.webContents.setZoomFactor(1);
+      } catch (e) { /* ignore */ }
     });
 
     const isDev = process.env.NODE_ENV === "development";
@@ -145,7 +163,43 @@ class WindowManager {
       this._userOpacity = 1;
     }
 
+    // 視窗尺寸自癒：透明無框視窗在 Windows 遇顯示設定變動（DPI / 解析度 / 插拔螢幕）
+    // 可能被系統縮成怪尺寸（實測被縮成 216×214、還掛到螢幕外 x=-350），而 resizable:false
+    // 讓使用者完全無法拖回 → 版面整個擠爛（標題直排、按鈕爆版）且重開內容也一樣。
+    // 顯示 / 還原 / 聚焦時檢查：非迷你而尺寸偏離 472×470 或跑出螢幕 → 強制矯正。
+    this.mainWindow.on("show", () => this._healMainBounds());
+    this.mainWindow.on("restore", () => this._healMainBounds());
+    this.mainWindow.on("focus", () => this._healMainBounds());
+    // 雙螢幕 / 顯示縮放變動（插拔螢幕、改縮放）也會觸發透明視窗被縮 → 一併自癒
+    try {
+      const { screen } = require("electron");
+      screen.on("display-metrics-changed", () => this._healMainBounds());
+      screen.on("display-added", () => this._healMainBounds());
+      screen.on("display-removed", () => this._healMainBounds());
+    } catch (e) { /* ignore */ }
+    this._healMainBounds();
+
     return this.mainWindow;
+  }
+
+  _healMainBounds() {
+    const win = this.mainWindow;
+    if (!win || win.isDestroyed() || this.isMini) return;
+    try {
+      const b = win.getBounds();
+      const needSize = Math.abs(b.width - 472) > 4 || Math.abs(b.height - 470) > 4;
+      const { screen } = require("electron");
+      const wa = screen.getDisplayMatching(b).workArea;
+      const offX = b.x < wa.x - b.width + 80 || b.x > wa.x + wa.width - 80;
+      const offY = b.y < wa.y - 40 || b.y > wa.y + wa.height - 80;
+      if (!needSize && !offX && !offY) return;
+      const x = Math.min(Math.max(b.x, wa.x), wa.x + wa.width - 472);
+      const y = Math.min(Math.max(b.y, wa.y), wa.y + wa.height - 470);
+      win.setResizable(true);
+      win.setBounds({ x, y, width: 472, height: 470 });
+      win.setResizable(false);
+      console.log("🩹 主視窗尺寸自癒:", JSON.stringify(b), "-> 472x470 @", x, y);
+    } catch (e) { /* ignore */ }
   }
 
   async createControlPanelWindow() {
@@ -158,7 +212,7 @@ class WindowManager {
       width: 800,
       height: 600,
       show: false,
-      title: "聲聲慢 - 極速語音轉錄",
+      title: "說打兔 - 極速語音轉錄",
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -194,7 +248,7 @@ class WindowManager {
       width: 1000,
       height: 700,
       show: false,
-      title: "轉錄歷史 - 聲聲慢",
+      title: "轉錄歷史 - 說打兔",
       alwaysOnTop: true,
       webPreferences: {
         nodeIntegration: false,
@@ -232,7 +286,7 @@ class WindowManager {
       minWidth: 820,
       minHeight: 640,
       show: false,
-      title: "設定 - 聲聲慢",
+      title: "設定 - 說打兔",
       frame: false,          // 移除原生標題列（改用 settings.jsx 內的自訂標題列）
       alwaysOnTop: true,
       webPreferences: {
@@ -470,23 +524,49 @@ class WindowManager {
     return { success: true, mini: enabled };
   }
 
+  _syncIndicatorTheme() {
+    if (!this.typelessIndicatorWindow || this.typelessIndicatorWindow.isDestroyed()) return;
+    try {
+      const { nativeTheme } = require("electron");
+      const theme = this.databaseManager ? this.databaseManager.getSetting('app_theme', 'system') : 'system';
+      let cls = '';
+      if (theme === 'system') {
+        cls = nativeTheme.shouldUseDarkColors ? 'dark' : '';
+      } else if (theme) {
+        cls = theme;
+      }
+      this.typelessIndicatorWindow.webContents.executeJavaScript(
+        `(()=>{const r=document.documentElement;r.classList.remove('dark','theme-dark-tech','theme-premium-light','theme-light-blue');${cls ? `r.classList.add('${cls}');` : ''}})();`
+      );
+    } catch (e) { /* ignore */ }
+  }
+
   showTypelessIndicator() {
-    // 顯示時把目前操作模式狀態推給藥丸（讓它一出現就是正確的紅/藍樣式）
+    this._typelessIndicatorHidePending = false;
     const pushState = () => {
       if (this.typelessIndicatorWindow && !this.typelessIndicatorWindow.isDestroyed()) {
         try { this.typelessIndicatorWindow.webContents.send("command-mode-changed", this.commandMode); } catch (e) { /* ignore */ }
       }
     };
+    const showAndElevate = () => {
+      // 每次顯示都重新強制置頂 + 最高層級，避免被其他全螢幕視窗蓋住
+      try { this.typelessIndicatorWindow?.setAlwaysOnTop(true, "screen-saver"); } catch (e) { /* ignore */ }
+      try { this.typelessIndicatorWindow?.showInactive(); } catch (e) { /* ignore */ }
+    };
     if (this.typelessIndicatorWindow && !this.typelessIndicatorWindow.isDestroyed()) {
+      this._syncIndicatorTheme();
       pushState();
-      this.typelessIndicatorWindow.show();
+      showAndElevate();
     } else {
       this.createTypelessIndicatorWindow().then(() => {
+        if (this._typelessIndicatorHidePending) {
+          this._typelessIndicatorHidePending = false;
+          return; // 建立期間已被要求隱藏，不顯示
+        }
         if (this.typelessIndicatorWindow) {
-          // 等內容載入完再推狀態，避免訊息早於監聽器
           this.typelessIndicatorWindow.webContents.once("did-finish-load", pushState);
           pushState();
-          this.typelessIndicatorWindow.show();
+          showAndElevate();
         }
       });
     }
@@ -495,6 +575,8 @@ class WindowManager {
   hideTypelessIndicator() {
     if (this.typelessIndicatorWindow && !this.typelessIndicatorWindow.isDestroyed()) {
       this.typelessIndicatorWindow.hide();
+    } else {
+      this._typelessIndicatorHidePending = true;
     }
   }
 

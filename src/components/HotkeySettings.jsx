@@ -9,6 +9,10 @@ const HOTKEY_ACTIONS = {
     nameKey: 'settings.hotkeysTab.actions.typelessRecording.name',
     descriptionKey: 'settings.hotkeysTab.actions.typelessRecording.description',
   },
+  'typeless-backup-stop': {
+    nameKey: 'settings.hotkeysTab.actions.typelessBackupStop.name',
+    descriptionKey: 'settings.hotkeysTab.actions.typelessBackupStop.description',
+  },
   'show-window': {
     nameKey: 'settings.hotkeysTab.actions.showWindow.name',
     descriptionKey: 'settings.hotkeysTab.actions.showWindow.description',
@@ -95,7 +99,7 @@ const keyEventToAccelerator = (e) => {
 };
 
 // 單個快捷鍵設定項
-const HotkeyItem = ({ actionId, actionInfo, currentHotkey, defaultHotkey, onUpdate, onReset }) => {
+const HotkeyItem = ({ actionId, actionInfo, currentHotkey, defaultHotkey, onUpdate, onReset, regResult }) => {
   const { t } = useTranslation();
   const spaceLabel = t('settings.hotkeysTab.spaceKey');
   const [isRecording, setIsRecording] = useState(false);
@@ -186,9 +190,16 @@ const HotkeyItem = ({ actionId, actionInfo, currentHotkey, defaultHotkey, onUpda
   return (
     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
       <div className="flex items-center justify-between mb-2">
-        <div>
-          <h4 className="font-medium text-gray-900 dark:text-gray-100">{t(actionInfo.nameKey)}</h4>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{t(actionInfo.descriptionKey)}</p>
+        <div className="flex items-center gap-1.5">
+          {regResult && (
+            regResult.success
+              ? <Check className="w-3.5 h-3.5 text-green-500 dark:text-green-400 flex-shrink-0" />
+              : <AlertCircle className="w-3.5 h-3.5 text-red-500 dark:text-red-400 flex-shrink-0" />
+          )}
+          <div>
+            <h4 className="font-medium text-gray-900 dark:text-gray-100">{t(actionInfo.nameKey)}</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t(actionInfo.descriptionKey)}</p>
+          </div>
         </div>
         {!isDefault && (
           <button
@@ -261,8 +272,10 @@ const HotkeySettings = () => {
   const [hotkeys, setHotkeys] = useState({});
   const [defaults, setDefaults] = useState({});
   const [loading, setLoading] = useState(true);
+  const [regStatus, setRegStatus] = useState(null);
+  const [aiOptTrigger, setAiOptTrigger] = useState('none');
 
-  // 載入快捷鍵設定
+  // 載入快捷鍵設定 + 註冊狀態 + AI 優化錄音觸發鍵
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -271,6 +284,14 @@ const HotkeySettings = () => {
           if (result.success) {
             setHotkeys(result.hotkeys || {});
             setDefaults(result.defaults || {});
+          }
+          const status = await window.electronAPI.getHotkeyRegistrationStatus();
+          if (status.success && status.results) {
+            setRegStatus(status.results);
+          }
+          const aiTrigger = await window.electronAPI.getAiOptimizeTrigger();
+          if (aiTrigger.success && aiTrigger.triggerId) {
+            setAiOptTrigger(aiTrigger.triggerId);
           }
         }
       } catch (err) {
@@ -343,8 +364,44 @@ const HotkeySettings = () => {
             defaultHotkey={defaults[actionId]}
             onUpdate={handleUpdate}
             onReset={handleReset}
+            regResult={regStatus?.[actionId]}
           />
         ))}
+      </div>
+
+      {/* AI 優化錄音觸發鍵（uiohook，可選右 Alt/右 Ctrl） */}
+      <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <Keyboard className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <div>
+            <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              {t('settings.hotkeysTab.aiOptimizeTrigger.title')}
+            </span>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t('settings.hotkeysTab.aiOptimizeTrigger.description')}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={aiOptTrigger}
+            onChange={async (e) => {
+              const val = e.target.value;
+              setAiOptTrigger(val);
+              await window.electronAPI.setAiOptimizeTrigger(val);
+            }}
+            className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+          >
+            <option value="none">{t('settings.hotkeysTab.aiOptimizeTrigger.none')}</option>
+            <option value="altRight">{t('settings.hotkeysTab.aiOptimizeTrigger.altRight')}</option>
+            <option value="ctrlRight">{t('settings.hotkeysTab.aiOptimizeTrigger.ctrlRight')}</option>
+            <option value="f11">{t('settings.hotkeysTab.aiOptimizeTrigger.f11')}</option>
+            <option value="f12">{t('settings.hotkeysTab.aiOptimizeTrigger.f12')}</option>
+          </select>
+        </div>
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          {t('settings.hotkeysTab.aiOptimizeTrigger.tip')}
+        </p>
       </div>
 
       <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">

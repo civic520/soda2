@@ -14,8 +14,9 @@
 <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform">
 <img src="https://img.shields.io/badge/ASR-sherpa--onnx-orange" alt="ASR">
 <img src="https://img.shields.io/badge/100%25-local-success" alt="Local">
+<img src="https://img.shields.io/badge/version-1.0.22-brightgreen" alt="Version">
 
-🌐 **[官方網站 / 介紹頁](https://jeffrey0117.github.io/SpeakSlow/)** ・ 📖 **[完整使用教學](https://jeffrey0117.github.io/SpeakSlow/#/guide)**
+🌐 **[官方網站 / 介紹頁](https://jeffrey0117.github.io/SpeakSlow/)** ・ 📖 **[完整使用教學](https://jeffrey0117.github.io/SpeakSlow/#/guide)** ・ 📝 **[更新日誌](CHANGELOG.md)**
 
 </div>
 
@@ -38,10 +39,11 @@
 
 ### 🎙️ 又快又準的本地辨識
 - **本地** sherpa-onnx **Paraformer（int8、非自回歸）**：講完約 **0.3 秒**貼上
-- **為中文 / 台灣優化**：簡轉繁用台灣標準字（「吃」不是「喫」）；中英混用（晶晶體）英文保留原文、不亂翻
+- **為中文 / 台灣優化**：簡轉繁用台灣標準字（「吃」不是「喫」）；中英混用（晶晶體）英文保留原文、不亂翻；台灣音「ㄌㄜˋㄙㄜˋ」自動修正為「垃圾」
 - **長講邊錄邊算**：錄音中先解碼講完的段落，停止後不論講多長都約 0.2 秒出字（實測 101 秒長講快 8 倍）
-- **防幻聽**：不講話絕不會冒出文字，靜音與環境噪音直接拒絕解碼；長音訊自動 VAD 分段，講一大段也完整
+- **防幻聽**：不講話絕不冒出文字，靜音與環境噪音直接拒絕解碼；長音訊自動 VAD 分段，講一大段也完整
 - **熱詞 / 自訂字典**：提升人名、產品、術語等專有名詞的準確度
+- **多種模型可選**：Paraformer（快速）、SenseVoice（多語言）、Whisper Small（繁體中文）、Qwen3-ASR（大模型）、Breeze-ASR（台語腔調優化）
 
 ### 🧹 乾淨的輸出（以下全部**不需要 AI**、純本地規則）
 - **自動標點**：依語意 + 句末語助詞（嗎 → ？、啊 → ！）
@@ -49,6 +51,7 @@
 - **全形英文 → 半形**：`ｈｅｌｌｏ` → `hello`
 - **規則式列點排版**：講「第一…第二…第三…」自動變成 `1. 2. 3.` 清單、引言補冒號
 - **停頓斷行**：用逐字時間戳偵測你講話的**停頓**，在自然換氣處自動換行（真正的韻律斷句）
+- **數字還原（ITN）**：連續 3 個以上的中文數字（一二三、二〇二四）自動轉換成阿拉伯數字
 
 ### ⌨️ 順手的互動
 - **右 Alt / 右 Ctrl 一鍵切換**：按一下開始、再按一下停止並貼上；錄音中 `Esc` 取消（瀏覽器裡用右 Ctrl 避開選單）

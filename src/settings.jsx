@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { toast, Toaster } from "sonner";
-import { Settings, Save, Eye, EyeOff, X, Loader2, TestTube, CheckCircle, XCircle, Mic, Shield, Globe, Keyboard, Sparkles, BookText, Tag, History, Info, Heart, Smile } from "lucide-react";
+import { Settings, Eye, EyeOff, X, Loader2, TestTube, CheckCircle, XCircle, Mic, Shield, Globe, Keyboard, Sparkles, BookText, Tag, History, Info, Heart, Smile, Cpu, Download, Trash2, Play, WifiOff, Wifi, Radio, Palette, FolderOpen } from "lucide-react";
 import { usePermissions } from "./hooks/usePermissions";
 import PermissionCard from "./components/ui/permission-card";
 import HotkeySettings from "./components/HotkeySettings";
@@ -11,18 +11,69 @@ import DictionaryManager from "./components/DictionaryManager";
 import EmojiManager from "./components/EmojiManager";
 import HistoryView from "./components/HistoryView";
 import { useTranslation, LanguageProvider } from "./i18n";
+import AIStylePackManager from "./components/AIStylePackManager";
+import { playBase64Sound, tryUnlock } from "./utils/audioPlayer";
 
 // 設定面板左側分頁（依重要性排序）
 const SETTINGS_TABS = [
   { id: 'general', labelKey: 'settings.tabs.general', icon: Settings },
+  { id: 'models', labelKey: 'settings.tabs.models', icon: Cpu },
   { id: 'history', labelKey: 'settings.tabs.history', icon: History },
   { id: 'ai', labelKey: 'settings.tabs.ai', icon: Sparkles },
+  { id: 'ai-style', labelKey: 'settings.tabs.aiStylePack', icon: Palette },
   { id: 'hotkeys', labelKey: 'settings.tabs.hotkeys', icon: Keyboard },
   { id: 'hotwords', labelKey: 'settings.tabs.hotwords', icon: Tag },
   { id: 'dictionary', labelKey: 'settings.tabs.dictionary', icon: BookText },
   { id: 'emoji', labelKey: 'settings.tabs.emoji', icon: Smile },
   { id: 'permissions', labelKey: 'settings.tabs.permissions', icon: Shield },
   { id: 'about', labelKey: 'settings.tabs.about', icon: Info },
+];
+
+// 本地 ASR 模型清單
+const LOCAL_ASR_MODELS = [
+  {
+    id: 'paraformer',
+    name: 'Paraformer 中文',
+    description: '專注中文的高精度離線語音辨識，輕量（約 80MB）、CPU 友善，是預設推薦的本地模型。',
+    size: '~80 MB',
+  },
+  {
+    id: 'sense_voice',
+    name: 'SenseVoice 多語言',
+    description: '支援中、英、日、韓、粵語，準確度高（約 330MB），適合多語境混合使用場景。',
+    size: '~330 MB',
+  },
+  {
+    id: 'whisper',
+    name: 'Whisper Small',
+    description: 'OpenAI Whisper 的輕量版，繁體中文能力強，語音識別效果穩定（約 200MB）。',
+    size: '~200 MB',
+  },
+  {
+    id: 'qwen3_asr',
+    name: 'Qwen3-ASR (0.6B)',
+    description: '阿里巴巴 Qwen3 語音辨識模型，支援多語言，大模型準確度（約 982MB），需要較大記憶體。',
+    size: '~982 MB',
+  },
+  {
+    id: 'breeze_asr_25',
+    name: 'Breeze-ASR-25（聯發科）',
+    description: '聯發科技研發，針對繁體中文及中英混用最佳化，大模型精度（約 1.8GB），適合有足夠 RAM 的設備。',
+    size: '~1.8 GB',
+  },
+];
+
+// AI 模型商供應商清單（對應 yukey 的 PostProcessProvider）
+const AI_PROVIDERS = [
+  { id: 'openai',     label: 'OpenAI',     base_url: 'https://api.openai.com/v1' },
+  { id: 'google',     label: 'Google (Gemini)', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+  { id: 'anthropic',  label: 'Anthropic',  base_url: 'https://api.anthropic.com/v1' },
+  { id: 'openrouter', label: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1' },
+  { id: 'groq',       label: 'Groq',       base_url: 'https://api.groq.com/openai/v1' },
+  { id: 'cerebras',   label: 'Cerebras',   base_url: 'https://api.cerebras.ai/v1' },
+  { id: 'zai',        label: 'Z.AI',       base_url: 'https://api.z.ai/api/paas/v4' },
+  { id: 'bedrock_mantle', label: 'AWS Bedrock (Mantle)', base_url: 'https://bedrock-mantle.us-east-1.api.aws/v1' },
+  { id: 'custom',     label: 'Custom',     base_url: 'http://localhost:11434/v1' },
 ];
 
 const SettingsPage = () => {
@@ -44,12 +95,21 @@ const SettingsPage = () => {
     typeless_trigger: "default",      // 錄音觸發鍵（issue #12：可自訂避開衝突）
     auto_format_lists: false,         // 自動列點（第一二三→1.2.3），預設關
     auto_line_break: false,           // 依停頓自動分行（issue #17），預設關
+    save_audio: true,                 // 保存錄音檔（給重新辨識用），預設開
+    audio_retention_days: 30,         // 錄音保留天數（0=永久）
     // 錄音完成後動作設定（自動貼上已固定開啟，僅保留「自動送出 Enter」）
     auto_enter_after_paste: false,    // 貼上後自動送出（完全信任模式）
     // 視窗控制設定
     window_always_on_top: true,       // 視窗置頂
     minimize_to_tray: true,           // 縮小到系統托盤
-    close_to_tray: true               // 關閉到系統托盤
+    close_to_tray: true,              // 關閉到系統托盤
+    auto_start: false,                // 開機自啟動
+    auto_start_minimized: true,       // 開機自啟動時縮到托盤
+    recording_sound_enabled: true,    // 錄音音效回饋
+    sound_feedback_volume: 0.8,       // 音效回饋音量
+    sound_theme: 'marimba',           // 音效主題
+    mute_while_recording: false,       // 錄音時靜音系統音訊
+    app_theme: 'system'                // 應用主題
   });
   
   const [customModel, setCustomModel] = useState(false);
@@ -63,6 +123,13 @@ const SettingsPage = () => {
   const [streamingModelProgress, setStreamingModelProgress] = useState(0);
   const [streamingModelPhase, setStreamingModelPhase] = useState(null);
   const [testResult, setTestResult] = useState(null);
+  const [aiSaveStatus, setAiSaveStatus] = useState(null); // null | 'saving' | 'saved'
+  const [selectedProviderId, setSelectedProviderId] = useState('openai');
+  const [aiProviderKeys, setAiProviderKeys] = useState({});      // { providerId: apiKey }
+  const [aiProviderUrls, setAiProviderUrls] = useState({});      // { providerId: baseUrl }
+  const [aiProviderModels, setAiProviderModels] = useState({});  // { providerId: model }
+  const [aiModelsList, setAiModelsList] = useState([]);          // 目前 provider 的模型清單
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [micDevices, setMicDevices] = useState([]); // 可選的麥克風清單
   const [runtimeInfo, setRuntimeInfo] = useState(null);
   const [appVersion, setAppVersion] = useState(''); // 真實版本號（issue #15：別再寫死 v1.0.1）
@@ -70,6 +137,26 @@ const SettingsPage = () => {
   const [micMonitorError, setMicMonitorError] = useState("");
   const [micMonitorActive, setMicMonitorActive] = useState(false);
   const micMonitorRef = useRef({ raf: 0, context: null, stream: null });
+
+  // ===== 模型選擇分頁狀態 =====
+  const [modelSubTab, setModelSubTab] = useState('local'); // 'local' | 'cloud'
+  const [selectedModelType, setSelectedModelType] = useState('paraformer'); // 目前啟用的本地模型
+  const [modelStatuses, setModelStatuses] = useState({}); // { [modelId]: true/false } 是否已下載
+  const [modelDirsExist, setModelDirsExist] = useState({}); // { [modelId]: true/false } 目錄是否存在
+  const [modelBundled, setModelBundled] = useState({}); // { [modelId]: true/false } 是否為安裝包內建（不可刪除）
+  const [modelDir, setModelDir] = useState({ currentDir: '', isCustom: false, defaultDir: '' });
+  const [modelDownloading, setModelDownloading] = useState(null); // 正在下載的 modelId
+  const [modelDownloadProgress, setModelDownloadProgress] = useState(0);
+  const [modelDeleting, setModelDeleting] = useState(null); // 正在刪除的 modelId
+  const [cloudAsrSettings, setCloudAsrSettings] = useState({
+    enabled: false,
+    provider: 'openai',
+    api_key: '',
+    base_url: '',
+    model: '',
+  });
+  const [cloudAsrTesting, setCloudAsrTesting] = useState(false);
+  const [cloudAsrTestResult, setCloudAsrTestResult] = useState(null);
 
   // 权限管理
   const showAlert = (alert) => {
@@ -91,6 +178,16 @@ const SettingsPage = () => {
     loadSettings();
     // 取真實版本號顯示在「關於」（issue #15）
     window.electronAPI?.getAppVersion?.().then((v) => { if (v) setAppVersion(v); }).catch(() => {});
+
+    // 監聽設定變化，與主視窗同步
+    if (window.electronAPI?.onSettingChanged) {
+      const unsubscribe = window.electronAPI.onSettingChanged((data) => {
+        if (data.key === 'enable_ai_optimization') {
+          setSettings(prev => ({ ...prev, enable_ai_optimization: data.value === true }));
+        }
+      });
+      return () => { if (unsubscribe) unsubscribe(); };
+    }
   }, []);
 
   useEffect(() => {
@@ -127,6 +224,224 @@ const SettingsPage = () => {
       cleanup?.();
     };
   }, []);
+
+  // 載入模型目錄路徑
+  useEffect(() => {
+    window.electronAPI?.getModelDir?.().then(res => {
+      if (res?.success) setModelDir(res);
+    });
+  }, []);
+
+  // 載入本地 ASR 模型狀態
+  const loadModelStatuses = async () => {
+    try {
+      const statuses = {};
+      const dirsExist = {};
+      const bundled = {};
+      for (const m of LOCAL_ASR_MODELS) {
+        try {
+          const result = await window.electronAPI?.checkModelExists?.(m.id);
+          statuses[m.id] = result?.models_downloaded === true;
+          dirsExist[m.id] = result?.directory_exists === true || result?.models_downloaded === true;
+          bundled[m.id] = result?.is_bundled === true;
+        } catch (e) {
+          statuses[m.id] = false;
+          dirsExist[m.id] = false;
+          bundled[m.id] = false;
+        }
+      }
+      setModelStatuses(statuses);
+      setModelDirsExist(dirsExist);
+      setModelBundled(bundled);
+    } catch (e) { /* ignore */ }
+  };
+
+  // 載入目前作用中的本地模型 & 雲端 ASR 設定
+  const loadAsrConfig = async () => {
+    try {
+      const allSettings = await window.electronAPI?.getAllSettings?.();
+      if (allSettings) {
+        const activeType = allSettings.asr_model_type || 'paraformer';
+        setSelectedModelType(activeType);
+
+        // 雲端 ASR 設定
+        let cloudCfg = {
+          enabled: false,
+          provider: 'openai',
+          api_key: '',
+          base_url: '',
+          model: '',
+        };
+        try {
+          const raw = allSettings.cloud_asr_settings;
+          if (raw) {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            cloudCfg = { ...cloudCfg, ...parsed };
+          }
+        } catch (e) { /* ignore */ }
+        setCloudAsrSettings(cloudCfg);
+
+        // 若雲端啟用，切到 cloud 子分頁
+        if (cloudCfg.enabled) setModelSubTab('cloud');
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'models') {
+      loadAsrConfig();
+      loadModelStatuses();
+    }
+  }, [activeTab]);
+
+  // 監聽模型下載進度
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onModelDownloadProgress?.((event, progress) => {
+      if (progress?.progress != null) {
+        setModelDownloadProgress(Math.round(progress.progress));
+      }
+    });
+    return () => cleanup?.();
+  }, []);
+
+  // 切換本地模型（啟用）
+  const activateLocalModel = async (modelId) => {
+    try {
+      await window.electronAPI?.switchModel?.(modelId);
+      setSelectedModelType(modelId);
+      // 同時關閉雲端 ASR
+      const newCloudCfg = { ...cloudAsrSettings, enabled: false };
+      setCloudAsrSettings(newCloudCfg);
+      await window.electronAPI?.setSetting?.('cloud_asr_settings', JSON.stringify(newCloudCfg));
+      // 重啟 Sherpa
+      await window.electronAPI?.restartSherpaServer?.();
+      toast.success(`已切換至本地模型：${LOCAL_ASR_MODELS.find(m => m.id === modelId)?.name || modelId}`);
+    } catch (e) {
+      toast.error('切換模型失敗: ' + e.message);
+    }
+  };
+
+  // 下載本地模型
+  const downloadLocalModel = async (modelId) => {
+    try {
+      setModelDownloading(modelId);
+      setModelDownloadProgress(0);
+      // 先切換到該模型讓 sherpaManager 知道要下載哪個
+      await window.electronAPI?.switchModel?.(modelId);
+      const result = await window.electronAPI?.downloadModels?.();
+      if (result?.success) {
+        toast.success('模型下載完成');
+        await loadModelStatuses();
+      } else {
+        toast.error('下載失敗: ' + (result?.error || '未知錯誤'));
+      }
+    } catch (e) {
+      toast.error('下載失敗: ' + e.message);
+    } finally {
+      setModelDownloading(null);
+      setModelDownloadProgress(0);
+      // 若原本有選其他模型，恢復
+      await loadAsrConfig();
+    }
+  };
+
+  // 刪除本地模型（二次確認）
+  const deleteLocalModel = async (modelId) => {
+    const modelName = LOCAL_ASR_MODELS.find(m => m.id === modelId)?.name || modelId;
+    if (!window.confirm(`確定要刪除「${modelName}」模型檔案嗎？`)) return;
+    if (!window.confirm(`再次確認：刪除後需要重新下載才能使用「${modelName}」，確定要刪除嗎？`)) return;
+    try {
+      setModelDeleting(modelId);
+      const result = await window.electronAPI?.deleteModelFiles?.(modelId);
+      if (result?.success !== false) {
+        toast.success('模型已刪除');
+        await loadModelStatuses();
+      } else {
+        toast.error('刪除失敗: ' + (result?.error || '未知錯誤'));
+      }
+    } catch (e) {
+      toast.error('刪除失敗: ' + e.message);
+    } finally {
+      setModelDeleting(null);
+    }
+  };
+
+  // 變更模型目錄
+  const handleChangeModelDir = async () => {
+    try {
+      const result = await window.electronAPI?.changeModelDir?.();
+      if (result?.success) {
+        if (result.moved) {
+          const names = result.movedModels?.length ? `（已移動 ${result.movedModels.length} 個模型）` : '';
+          toast.success(`模型目錄已變更${names}`);
+        } else {
+          toast.info(result.message || '目錄未變更');
+        }
+        // 重新載入目錄路徑和模型狀態
+        const dirRes = await window.electronAPI?.getModelDir?.();
+        if (dirRes?.success) setModelDir(dirRes);
+        await loadModelStatuses();
+      } else if (!result?.canceled) {
+        toast.error('變更失敗: ' + (result?.error || '未知錯誤'));
+      }
+    } catch (e) {
+      toast.error('變更失敗: ' + e.message);
+    }
+  };
+
+  // 切換到雲端 ASR
+  const activateCloudAsr = async (newCfg) => {
+    try {
+      const cfg = newCfg || cloudAsrSettings;
+      const updatedCfg = { ...cfg, enabled: true };
+      setCloudAsrSettings(updatedCfg);
+      await window.electronAPI?.setSetting?.('cloud_asr_settings', JSON.stringify(updatedCfg));
+      toast.success('已切換至雲端 ASR 辨識');
+    } catch (e) {
+      toast.error('切換失敗: ' + e.message);
+    }
+  };
+
+  // 停用雲端 ASR（改回本地）
+  const deactivateCloudAsr = async () => {
+    try {
+      const updatedCfg = { ...cloudAsrSettings, enabled: false };
+      setCloudAsrSettings(updatedCfg);
+      await window.electronAPI?.setSetting?.('cloud_asr_settings', JSON.stringify(updatedCfg));
+      toast.success('已切換回本地辨識模型');
+    } catch (e) {
+      toast.error('切換失敗: ' + e.message);
+    }
+  };
+
+  // 更新雲端 ASR 設定並存檔
+  const updateCloudAsrSetting = async (key, value) => {
+    const updated = { ...cloudAsrSettings, [key]: value };
+    setCloudAsrSettings(updated);
+    try {
+      await window.electronAPI?.setSetting?.('cloud_asr_settings', JSON.stringify(updated));
+    } catch (e) { /* ignore */ }
+  };
+
+  // 雲端 ASR 連線測試
+  const testCloudAsrConnection = async () => {
+    try {
+      setCloudAsrTesting(true);
+      setCloudAsrTestResult(null);
+      const result = await window.electronAPI?.testCloudAsrConnection?.(cloudAsrSettings);
+      setCloudAsrTestResult(result);
+      if (result?.success) {
+        toast.success('雲端 ASR 連線成功');
+      } else {
+        toast.error('連線失敗: ' + (result?.error || '未知錯誤'));
+      }
+    } catch (e) {
+      setCloudAsrTestResult({ success: false, error: e.message });
+      toast.error('連線測試失敗: ' + e.message);
+    } finally {
+      setCloudAsrTesting(false);
+    }
+  };
 
   // 列出可選的麥克風（已授權的話會有名稱；沒授權則只有編號）
   useEffect(() => {
@@ -244,32 +559,50 @@ const SettingsPage = () => {
           ai_api_key: allSettings.ai_api_key || "",
           ai_base_url: allSettings.ai_base_url || "https://api.openai.com/v1",
           ai_model: allSettings.ai_model || "gpt-4o-mini",
-          enable_ai_optimization: allSettings.enable_ai_optimization === true, // 默认为false
-          enable_notifications: allSettings.enable_notifications !== false, // 默认为true
-          enable_streaming_mode: allSettings.enable_streaming_mode === true, // 默認關閉
-          language: allSettings.language || "zh-TW", // 默认繁体中文
-          convert_transcription: allSettings.convert_transcription !== false, // 默认转换
+          enable_ai_optimization: allSettings.enable_ai_optimization === true,
+          enable_notifications: allSettings.enable_notifications !== false,
+          enable_streaming_mode: allSettings.enable_streaming_mode === true,
+          language: allSettings.language || "zh-TW",
+          convert_transcription: allSettings.convert_transcription !== false,
           asr_profile: allSettings.asr_profile || "standard",
           mic_device_id: allSettings.mic_device_id || "",
           mic_auto_gain: allSettings.mic_auto_gain !== false,
           typeless_trigger: allSettings.typeless_trigger || "default",
           auto_format_lists: allSettings.auto_format_lists === true,
           auto_line_break: allSettings.auto_line_break === true,
-          // 錄音完成後動作設定
-          auto_enter_after_paste: allSettings.auto_enter_after_paste === true, // 默認不自動送出
-          // 視窗控制設定
-          window_always_on_top: allSettings.window_always_on_top !== false, // 默認置頂
-          minimize_to_tray: allSettings.minimize_to_tray !== false, // 默認縮小到托盤
-          close_to_tray: allSettings.close_to_tray !== false, // 默認關閉到托盤
-          // 視窗透明度（0.3~1）：之前漏在白名單外 → 開設定永遠顯示 100%（與實際脫鉤）
+          save_audio: allSettings.save_audio !== false,
+          audio_retention_days: allSettings.audio_retention_days != null ? Number(allSettings.audio_retention_days) : 30,
+          auto_enter_after_paste: allSettings.auto_enter_after_paste === true,
+          window_always_on_top: allSettings.window_always_on_top !== false,
+          minimize_to_tray: allSettings.minimize_to_tray !== false,
+          close_to_tray: allSettings.close_to_tray !== false,
+          auto_start: allSettings.auto_start === true,
+          auto_start_minimized: allSettings.auto_start_minimized !== false,
+          recording_sound_enabled: allSettings.recording_sound_enabled !== false,
+          sound_feedback_volume: (() => {
+            const v = Number(allSettings.sound_feedback_volume);
+            return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+          })(),
+          sound_theme: allSettings.sound_theme || 'marimba',
+          mute_while_recording: allSettings.mute_while_recording === true,
+          app_theme: allSettings.app_theme || 'system',
           window_opacity: (() => {
             const v = Number(allSettings.window_opacity);
             return Number.isFinite(v) && v > 0 ? Math.max(0.3, Math.min(1, v)) : 1;
           })()
         };
         setSettings(prev => ({ ...prev, ...loadedSettings }));
-        
-        // 检查是否使用自定义模型
+
+        // 載入多模型商設定
+        const providerId = allSettings.ai_provider_id || 'openai';
+        setSelectedProviderId(providerId);
+        const keys = allSettings.ai_api_keys || {};
+        const urls = allSettings.ai_base_urls || {};
+        const models = allSettings.ai_models || {};
+        setAiProviderKeys(keys);
+        setAiProviderUrls(urls);
+        setAiProviderModels(models);
+
         const predefinedModels = ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner", "gpt-4o", "gpt-4o-mini", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3.5-flash", "qwen2.5", "qwen2.5:3b", "llama3.2"];
         setCustomModel(!predefinedModels.includes(loadedSettings.ai_model));
       }
@@ -286,12 +619,11 @@ const SettingsPage = () => {
     try {
       setSaving(true);
       if (window.electronAPI) {
-        // 保存每个设置项
-        await window.electronAPI.setSetting('ai_api_key', settings.ai_api_key);
-        await window.electronAPI.setSetting('ai_base_url', settings.ai_base_url);
-        await window.electronAPI.setSetting('ai_model', settings.ai_model);
+        await window.electronAPI.setSetting('ai_provider_id', selectedProviderId);
+        await window.electronAPI.setSetting('ai_api_keys', aiProviderKeys);
+        await window.electronAPI.setSetting('ai_base_urls', aiProviderUrls);
+        await window.electronAPI.setSetting('ai_models', aiProviderModels);
         await window.electronAPI.setSetting('enable_ai_optimization', settings.enable_ai_optimization);
-        
         toast.success(t('settings.saveSuccess'));
       }
     } catch (error) {
@@ -299,6 +631,23 @@ const SettingsPage = () => {
       toast.error(t('settings.saveFailed'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 靜默自動儲存 AI 設定（測試/選模型/輸入金鑰時呼叫）
+  const autoSaveAI = async () => {
+    if (!window.electronAPI) return;
+    setAiSaveStatus('saving');
+    try {
+      await window.electronAPI.setSetting('ai_provider_id', selectedProviderId);
+      await window.electronAPI.setSetting('ai_api_keys', aiProviderKeys);
+      await window.electronAPI.setSetting('ai_base_urls', aiProviderUrls);
+      await window.electronAPI.setSetting('ai_models', aiProviderModels);
+      await window.electronAPI.setSetting('enable_ai_optimization', settings.enable_ai_optimization);
+      setAiSaveStatus('saved');
+    } catch (e) {
+      console.error("Auto-save AI failed:", e);
+      setAiSaveStatus(null);
     }
   };
 
@@ -314,6 +663,20 @@ const SettingsPage = () => {
   const handleOpacityChange = async (value) => {
     setSettings(prev => ({ ...prev, window_opacity: value }));
     try { await window.electronAPI?.setWindowOpacity?.(value); } catch (e) { /* ignore */ }
+  };
+
+  const handleVolumeChange = async (value) => {
+    setSettings(prev => ({ ...prev, sound_feedback_volume: value }));
+    try { await window.electronAPI?.setSetting?.('sound_feedback_volume', value); } catch (e) { /* ignore */ }
+  };
+
+  const handlePlayTestSound = async () => {
+    try {
+      const res = await window.electronAPI?.playSound(settings.sound_theme === 'marimba' ? 'marimba_start' : 'rec_start');
+      if (!res?.data) return;
+      await tryUnlock();
+      await playBase64Sound(res.data, res.mimeType, settings.sound_feedback_volume);
+    } catch (e) { console.warn('test sound error:', e); }
   };
 
   // 通用：改一個設定值並即時存檔（給下拉選單等用）
@@ -396,6 +759,14 @@ const SettingsPage = () => {
           toast.success(value ? t('settings.minimizeToTrayEnabled') : t('settings.minimizeToTrayDisabled'));
         } else if (key === 'close_to_tray') {
           toast.success(value ? t('settings.closeToTrayEnabled') : t('settings.closeToTrayDisabled'));
+        } else if (key === 'recording_sound_enabled') {
+          toast.success(value ? t('settings.soundEnabled') : t('settings.soundDisabled'));
+        } else if (key === 'mute_while_recording') {
+          toast.success(value ? t('settings.muteWhileRecordingEnabled') : t('settings.muteWhileRecordingDisabled'));
+        } else if (key === 'auto_start') {
+          toast.success(value ? t('settings.autoStartEnabled') : t('settings.autoStartDisabled'));
+        } else if (key === 'auto_start_minimized') {
+          toast.success(value ? t('settings.autoStartMinimizedEnabled') : t('settings.autoStartMinimizedDisabled'));
         }
         // 設定變更會透過 IPC 自動廣播到所有視窗
       }
@@ -405,63 +776,51 @@ const SettingsPage = () => {
     }
   };
 
-  // Gemini（OpenAI 相容端點）
-  const applyGeminiConfig = () => {
-    setSettings(prev => ({
-      ...prev,
-      ai_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-      ai_model: "gemini-2.5-flash",
-      // 換到不同供應商就清空 key（別帶著別家的 key 打 Gemini → 一定失敗）
-      ai_api_key: prev.ai_base_url === "https://generativelanguage.googleapis.com/v1beta/openai" ? prev.ai_api_key : ""
-    }));
-    setCustomModel(true);
-    toast.info(t('settings.configApplied', { provider: 'Gemini' }));
+  // 拉取目前 provider 的模型清單
+  const fetchModelsForProvider = async (providerId) => {
+    const provider = AI_PROVIDERS.find(p => p.id === providerId) || AI_PROVIDERS[0];
+    const baseUrl = (aiProviderUrls[providerId] || provider.base_url).trim().replace(/\/$/, '');
+    const apiKey = aiProviderKeys[providerId] || '';
+    if (!apiKey && providerId !== 'custom') {
+      toast.error('請先輸入 API Key');
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      const result = await window.electronAPI.fetchProviderModels({
+        provider_id: providerId, base_url: baseUrl, api_key: apiKey
+      });
+      if (result.success) {
+        setAiModelsList(result.models);
+        toast.success(`取得 ${result.models.length} 個模型`);
+      } else {
+        toast.error('取得模型失敗: ' + (result.error || ''));
+      }
+    } catch (e) {
+      toast.error('取得模型失敗: ' + e.message);
+    } finally {
+      setFetchingModels(false);
+    }
   };
 
-  // Ollama（本地 LLM，免 API key、全離線）
-  const applyOllamaConfig = () => {
-    setSettings(prev => ({
-      ...prev,
-      ai_base_url: "http://localhost:11434/v1",
-      ai_api_key: prev.ai_api_key || "ollama",
-      ai_model: "qwen2.5"
-    }));
-    setCustomModel(true);
-    toast.info(t('settings.configApplied', { provider: t('settings.ollamaLocal') }));
-  };
+  // 切換模型商時自動拉取模型清單
+  useEffect(() => {
+    if (selectedProviderId && !loading) {
+      fetchModelsForProvider(selectedProviderId);
+    }
+  }, [selectedProviderId, loading]);
 
-  // 重置为OpenAI配置
-  const resetToOpenAI = () => {
-    setSettings(prev => ({
-      ...prev,
-      ai_base_url: "https://api.openai.com/v1",
-      ai_model: "gpt-4o-mini",
-      ai_api_key: prev.ai_base_url === "https://api.openai.com/v1" ? prev.ai_api_key : ""
-    }));
-    setCustomModel(false);
-    toast.info(t('settings.configApplied', { provider: t('settings.openaiConfig') }));
-  };
-
-  // 应用DeepSeek配置
-  const applyDeepSeekConfig = () => {
-    setSettings(prev => ({
-      ...prev,
-      ai_base_url: "https://api.deepseek.com",
-      ai_model: "deepseek-v4-flash",
-      ai_api_key: prev.ai_base_url === "https://api.deepseek.com" ? prev.ai_api_key : ""
-    }));
-    setCustomModel(false);
-    toast.info(t('settings.configApplied', { provider: 'DeepSeek' }));
-  };
-
-  // 测试AI配置
+  // 測試AI配置
   const testAIConfiguration = async () => {
     try {
       setTesting(true);
       setTestResult(null);
-      
-      // 验证当前输入的配置
-      if (!settings.ai_api_key.trim()) {
+      const provider = AI_PROVIDERS.find(p => p.id === selectedProviderId) || AI_PROVIDERS[0];
+      const apiKey = (aiProviderKeys[selectedProviderId] || '').trim();
+      const baseUrl = (aiProviderUrls[selectedProviderId] || provider.base_url).trim();
+      const model = (aiProviderModels[selectedProviderId] || '').trim();
+
+      if (!apiKey && selectedProviderId !== 'custom') {
         setTestResult({
           available: false,
           error: t('settings.configIncompleteDesc'),
@@ -474,11 +833,11 @@ const SettingsPage = () => {
       }
       
       if (window.electronAPI) {
-        // 使用当前页面的配置进行测试，而不是已保存的配置
         const testConfig = {
-          ai_api_key: settings.ai_api_key.trim(),
-          ai_base_url: settings.ai_base_url.trim() || 'https://api.openai.com/v1',
-          ai_model: settings.ai_model.trim() || 'gpt-4o-mini'
+          provider_id: selectedProviderId,
+          api_key: apiKey,
+          base_url: baseUrl || 'https://api.openai.com/v1',
+          model: model || 'gpt-4o-mini'
         };
         
         const result = await window.electronAPI.checkAIStatus(testConfig);
@@ -488,6 +847,17 @@ const SettingsPage = () => {
           toast.success(t('settings.testSuccess'), {
             description: t('settings.testSuccessDesc', { model: result.model || '?' })
           });
+          // 測試通過 → 自動儲存設定
+          try {
+            await window.electronAPI.setSetting('ai_provider_id', selectedProviderId);
+            await window.electronAPI.setSetting('ai_api_keys', aiProviderKeys);
+            await window.electronAPI.setSetting('ai_base_urls', aiProviderUrls);
+            await window.electronAPI.setSetting('ai_models', aiProviderModels);
+            await window.electronAPI.setSetting('enable_ai_optimization', settings.enable_ai_optimization);
+            toast.success(t('settings.saveSuccess'));
+          } catch (e) {
+            console.error("Auto-save after test failed:", e);
+          }
         } else {
           toast.error(t('settings.testFailed'), {
             description: result.error || t('settings.testFailedDesc')
@@ -517,27 +887,27 @@ const SettingsPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+      <div className="min-h-screen bg-[hsl(var(--background))] flex items-center justify-center">
         <div className="flex items-center space-x-3">
-          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-          <span className="text-gray-700 dark:text-gray-300">{t('common.loading')}</span>
+          <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--primary))]" />
+          <span className="text-[hsl(var(--foreground))]">{t('common.loading')}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex flex-col">
+    <div className="h-screen bg-[hsl(var(--background))] flex flex-col">
       {/* 标题栏 - 固定（可拖曳，取代原生標題列）*/}
-      <div className="draggable bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex-shrink-0">
+      <div className="draggable bg-[hsl(var(--glass-bg))] backdrop-blur-sm border-b border-[hsl(var(--border))] px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Settings className="w-5 h-5 text-blue-600" />
+            <Settings className="w-5 h-5 text-[hsl(var(--theme-accent))]" />
             <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 chinese-title">{t('settings.title')}</h1>
           </div>
           <button
             onClick={handleClose}
-            className="non-draggable p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className="non-draggable p-2 hover:bg-[hsl(var(--accent))] rounded-lg transition-colors"
           >
             <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
@@ -547,17 +917,17 @@ const SettingsPage = () => {
       {/* 主要內容：左側分頁 + 右側內容 */}
       <div className="flex-1 flex min-h-0">
         {/* 側邊欄分頁 */}
-        <nav className="w-44 flex-shrink-0 overflow-y-auto border-r border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-800/40 py-3">
+        <nav className="w-48 flex-shrink-0 overflow-y-auto border-r border-[hsl(var(--border))] bg-[hsl(var(--glass-bg))] backdrop-blur-sm py-3">
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-all duration-200 ${
                   activeTab === tab.id
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-r-2 border-blue-500 font-medium'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                    ? 'bg-[hsl(var(--theme-accent))]/10 text-[hsl(var(--theme-accent))] border-r-2 border-[hsl(var(--theme-accent))] font-semibold shadow-sm'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]'
                 }`}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
@@ -571,7 +941,7 @@ const SettingsPage = () => {
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="max-w-2xl mx-auto p-6 pb-8">
             {activeTab === 'permissions' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
@@ -608,7 +978,7 @@ const SettingsPage = () => {
 
             {activeTab === 'general' && (<>
           {/* 一般设置部分 */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
@@ -653,6 +1023,46 @@ const SettingsPage = () => {
                     <option value="zh-TW">繁體中文</option>
                     <option value="zh-CN">简体中文</option>
                     <option value="en">English</option>
+                  </select>
+                </div>
+
+                {/* 主題選擇 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      <Palette className="w-4 h-4" />
+                      {t('settings.appTheme')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.appThemeDesc')}
+                    </p>
+                  </div>
+                  <select
+                    value={settings.app_theme || 'system'}
+                    onChange={async (e) => {
+                      const theme = e.target.value;
+                      handleInputChange('app_theme', theme);
+                      if (window.electronAPI) {
+                        await window.electronAPI.setSetting('app_theme', theme);
+                      }
+                      // 套用主題到 <html>
+                      const root = document.documentElement;
+                      root.classList.remove('dark', 'theme-dark-tech', 'theme-premium-light', 'theme-light-blue');
+                      if (theme === 'system') {
+                        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                          root.classList.add('dark');
+                        }
+                      } else {
+                        root.classList.add(theme);
+                      }
+                      toast.success(t('settings.appThemeChanged'));
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="system">{t('settings.themeSystem')}</option>
+                    <option value="theme-premium-light">{t('settings.themePremiumLight')}</option>
+                    <option value="theme-dark-tech">{t('settings.themeDarkTech')}</option>
+                    <option value="theme-light-blue">{t('settings.themeZenNatural')}</option>
                   </select>
                 </div>
 
@@ -769,9 +1179,17 @@ const SettingsPage = () => {
                     }}
                     className="max-w-[55%] px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
-                    <option value="default">{t('settings.typelessTriggerDefault')}</option>
-                    <option value="ctrlRight">{t('settings.typelessTriggerCtrlRight')}</option>
-                    <option value="altRight">{t('settings.typelessTriggerAltRight')}</option>
+                    {runtimeInfo?.platform === 'darwin' ? (
+                      // Mac 沒有右 Ctrl,且 default(右Alt+右Ctrl)在 Mac 等同右 Option,
+                      // 所以只給「右 Option(預設)」+ 功能鍵,不列 Mac 上不存在/重複的選項。
+                      <option value="default">{t('settings.typelessTriggerDefaultMac')}</option>
+                    ) : (
+                      <>
+                        <option value="default">{t('settings.typelessTriggerDefault')}</option>
+                        <option value="ctrlRight">{t('settings.typelessTriggerCtrlRight')}</option>
+                        <option value="altRight">{t('settings.typelessTriggerAltRight')}</option>
+                      </>
+                    )}
                     <option value="f8">F8</option>
                     <option value="f9">F9</option>
                     <option value="f10">F10</option>
@@ -833,6 +1251,61 @@ const SettingsPage = () => {
                     />
                   </button>
                 </div>
+
+                {/* 保存錄音檔 + 保留期限（建議 1：省 SSD、避免無限增長） */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.saveAudio')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.saveAudioDesc')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.save_audio !== false}
+                    onClick={() => handleToggleChange('save_audio', !(settings.save_audio !== false))}
+                    className={`${
+                      settings.save_audio !== false ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`${
+                        settings.save_audio !== false ? 'translate-x-4' : 'translate-x-0'
+                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
+                {settings.save_audio !== false && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {t('settings.audioRetention')}
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {t('settings.audioRetentionDesc')}
+                      </p>
+                    </div>
+                    <select
+                      value={String(settings.audio_retention_days ?? 30)}
+                      onChange={async (e) => {
+                        const v = Number(e.target.value);
+                        handleInputChange('audio_retention_days', v);
+                        if (window.electronAPI) await window.electronAPI.setSetting('audio_retention_days', v);
+                        toast.success(t('settings.audioRetentionChanged'));
+                      }}
+                      className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="7">{t('settings.retentionDays', { n: 7 })}</option>
+                      <option value="30">{t('settings.retentionDays', { n: 30 })}</option>
+                      <option value="90">{t('settings.retentionDays', { n: 90 })}</option>
+                      <option value="0">{t('settings.retentionForever')}</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* 效能模式：標準（最準）/ 快速（弱 CPU 機器） */}
                 <div className="flex items-center justify-between">
@@ -964,8 +1437,146 @@ const SettingsPage = () => {
             </div>
           </div>
 
+          {/* 聲音回饋設定 */}
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
+            <div className="p-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
+                  {t('settings.soundFeedback')}
+                </h2>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                  {t('settings.soundFeedbackDesc')}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {/* 聲音回饋開關 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.soundFeedbackToggle')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.soundFeedbackToggleDesc')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.recording_sound_enabled}
+                    onClick={() => handleToggleChange('recording_sound_enabled', !settings.recording_sound_enabled)}
+                    className={`${
+                      settings.recording_sound_enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`${
+                        settings.recording_sound_enabled ? 'translate-x-4' : 'translate-x-0'
+                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
+
+                {/* 音量滑桿（僅在音效啟用時顯示） */}
+                {settings.recording_sound_enabled && (
+                  <>
+                    <div>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                          {t('settings.soundFeedbackVolume')}
+                        </label>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                          {Math.round(settings.sound_feedback_volume * 100)}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        {t('settings.soundFeedbackVolumeDesc')}
+                      </p>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={Math.round(settings.sound_feedback_volume * 100)}
+                        onChange={(e) => handleVolumeChange(Number(e.target.value) / 100)}
+                        className="w-full slider-accent cursor-pointer"
+                      />
+                    </div>
+
+                    {/* 音效主題選擇 */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                          {t('settings.soundTheme')}
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {t('settings.soundThemeDesc')}
+                        </p>
+                      </div>
+                      <select
+                        value={settings.sound_theme}
+                        onChange={(e) => handleSettingChange('sound_theme', e.target.value)}
+                        className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      >
+                        <option value="marimba">Marimba</option>
+                      </select>
+                    </div>
+
+                    {/* 測試音效按鈕 */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                          {t('settings.testSound')}
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {t('settings.testSoundDesc')}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handlePlayTestSound}
+                        className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {t('settings.testSoundPlay')}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* 錄音時靜音系統音訊 */}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.muteWhileRecording')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.muteWhileRecordingDesc')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.mute_while_recording}
+                    onClick={() => handleToggleChange('mute_while_recording', !settings.mute_while_recording)}
+                    className={`${
+                      settings.mute_while_recording ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`${
+                        settings.mute_while_recording ? 'translate-x-4' : 'translate-x-0'
+                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* 視窗控制設定 */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
@@ -1025,7 +1636,7 @@ const SettingsPage = () => {
                     step="5"
                     value={Math.round((settings.window_opacity ?? 1) * 100)}
                     onChange={(e) => handleOpacityChange(Number(e.target.value) / 100)}
-                    className="w-full accent-blue-600 cursor-pointer"
+                    className="w-full slider-accent cursor-pointer"
                   />
                 </div>
 
@@ -1084,12 +1695,68 @@ const SettingsPage = () => {
                     />
                   </button>
                 </div>
+
+                {/* 開機自動啟動 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.autoStart')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.autoStartDesc')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.auto_start}
+                    onClick={() => handleToggleChange('auto_start', !settings.auto_start)}
+                    className={`${
+                      settings.auto_start ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`${
+                        settings.auto_start ? 'translate-x-4' : 'translate-x-0'
+                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
+
+                {/* 開機自啟動時縮到托盤（子選項，需先啟用 auto_start） */}
+                <div className={`flex items-center justify-between pl-6 ${!settings.auto_start ? 'opacity-40 pointer-events-none' : ''}`}>
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.autoStartMinimized')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.autoStartMinimizedDesc')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.auto_start_minimized}
+                    onClick={() => handleToggleChange('auto_start_minimized', !settings.auto_start_minimized)}
+                    className={`${
+                      settings.auto_start_minimized ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`${
+                        settings.auto_start_minimized ? 'translate-x-4' : 'translate-x-0'
+                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
           {/* 錄音完成後動作設定 */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
@@ -1146,7 +1813,7 @@ const SettingsPage = () => {
           </div>
 
           {/* 操作模式 / 朗讀設定 */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6 space-y-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1160,7 +1827,7 @@ const SettingsPage = () => {
                 <button
                   type="button"
                   onClick={() => window.electronAPI?.openNotes?.()}
-                  className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                   {t('settings.openNotes')}
                 </button>
@@ -1234,7 +1901,7 @@ const SettingsPage = () => {
             </>)}
 
             {activeTab === 'history' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))]">
             <div className="p-5 h-[calc(100vh-7rem)]">
               <HistoryView />
             </div>
@@ -1242,7 +1909,7 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'hotkeys' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <HotkeySettings />
             </div>
@@ -1251,7 +1918,7 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'hotwords' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <HotwordsManager t={t} />
             </div>
@@ -1260,7 +1927,7 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'dictionary' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <DictionaryManager t={t} />
             </div>
@@ -1269,7 +1936,7 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'emoji' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] mb-6">
             <div className="p-6">
               <EmojiManager t={t} />
             </div>
@@ -1277,8 +1944,286 @@ const SettingsPage = () => {
 
             )}
 
+            {/* ===== 模型選擇分頁 ===== */}
+            {activeTab === 'models' && (
+              <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))]">
+                {/* 子分頁標籤 */}
+                <div className="flex border-b border-gray-200 dark:border-gray-700">
+                  <button
+                    onClick={async () => { setModelSubTab('local'); await deactivateCloudAsr(); }}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                      modelSubTab === 'local'
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-b-2 border-blue-500'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}
+                  >
+                    <Cpu className="w-4 h-4" />
+                    本地語音辨識模型
+                    {!cloudAsrSettings.enabled && <span className="ml-1 text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded-full">使用中</span>}
+                  </button>
+                  <button
+                    onClick={() => setModelSubTab('cloud')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                      modelSubTab === 'cloud'
+                        ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border-b-2 border-sky-500'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}
+                  >
+                    <Globe className="w-4 h-4" />
+                    雲端服務 ASR 模型
+                    {cloudAsrSettings.enabled && <span className="ml-1 text-xs bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 px-1.5 py-0.5 rounded-full">使用中</span>}
+                  </button>
+                </div>
+
+                <div className="p-5">
+
+                  {/* ── 本地模型子分頁 ── */}
+                  {modelSubTab === 'local' && (
+                    <div className="space-y-3">
+                      {cloudAsrSettings.enabled && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
+                          <WifiOff className="w-4 h-4 flex-shrink-0" />
+                          <span>目前使用雲端 ASR，切換至本地模型時雲端將自動停用。</span>
+                        </div>
+                      )}
+                      {LOCAL_ASR_MODELS.map((model) => {
+                        const isDownloaded = modelStatuses[model.id];
+                        const hasDir = modelDirsExist[model.id];
+                        const isActive = selectedModelType === model.id && !cloudAsrSettings.enabled;
+                        const isDownloadingThis = modelDownloading === model.id;
+                        const isDeletingThis = modelDeleting === model.id;
+                        const isBundled = modelBundled[model.id];
+                        return (
+                          <div
+                            key={model.id}
+                            className={`rounded-xl border p-4 transition-all ${
+                              isActive
+                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{model.name}</span>
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">{model.size}</span>
+                                  {isActive && (
+                                    <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">目前使用中</span>
+                                  )}
+                                  {isBundled && (
+                                    <span className="text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">內建</span>
+                                  )}
+                                  {isDownloaded && !isActive && !isBundled && (
+                                    <span className="text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">已下載</span>
+                                  )}
+                                  {!isDownloaded && !isDownloadingThis && (
+                                    <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">未下載</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{model.description}</p>
+                                {isDownloadingThis && (
+                                  <div className="mt-2">
+                                    <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 mb-1">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      下載中 {modelDownloadProgress}%
+                                    </div>
+                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                      <div
+                                        className="bg-blue-500 h-1.5 rounded-full transition-all"
+                                        style={{ width: `${modelDownloadProgress}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {!isDownloaded && !isDownloadingThis && (
+                                  <button
+                                    onClick={() => downloadLocalModel(model.id)}
+                                    disabled={!!modelDownloading}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    下載
+                                  </button>
+                                )}
+                                {isDownloaded && !isActive && (
+                                  <button
+                                    onClick={() => activateLocalModel(model.id)}
+                                    disabled={!!modelDownloading}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg transition-colors"
+                                  >
+                                    <Play className="w-3 h-3" />
+                                    啟用
+                                  </button>
+                                )}
+                                {(isDownloaded || hasDir) && !isBundled && (
+                                  <button
+                                    onClick={() => deleteLocalModel(model.id)}
+                                    disabled={isDeletingThis || !!modelDownloading}
+                                    className="flex items-center gap-1 px-2 py-1.5 text-xs bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-lg transition-colors"
+                                  >
+                                    {isDeletingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                    刪除
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => window.electronAPI?.openDefaultModelDir?.()}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                          <FolderOpen className="w-3 h-3" />
+                          打開模型目錄
+                        </button>
+                        <button
+                          onClick={handleChangeModelDir}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                          <FolderOpen className="w-3 h-3" />
+                          變更模型目錄
+                        </button>
+                      </div>
+                      {modelDir.currentDir && (
+                        <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500 truncate" title={modelDir.currentDir}>
+                          {modelDir.isCustom ? '自訂' : '預設'}：{modelDir.currentDir}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── 雲端 ASR 子分頁 ── */}
+                  {modelSubTab === 'cloud' && (
+                    <div className="space-y-4">
+                      {/* 互斥防呆提示 */}
+                      {!cloudAsrSettings.enabled && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-300">
+                          <Cpu className="w-4 h-4 flex-shrink-0" />
+                          <span>目前使用本地模型。啟用雲端 ASR 後，本地模型將自動暫停。</span>
+                        </div>
+                      )}
+                      {cloudAsrSettings.enabled && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 text-sm text-sky-700 dark:text-sky-300">
+                          <Wifi className="w-4 h-4 flex-shrink-0" />
+                          <span>雲端 ASR 辨識已啟用。</span>
+                          <button
+                            onClick={deactivateCloudAsr}
+                            className="ml-auto text-xs underline hover:no-underline"
+                          >
+                            切回本地模型
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 服務商選擇 */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">服務商</label>
+                        <select
+                          value={cloudAsrSettings.provider}
+                          onChange={(e) => updateCloudAsrSetting('provider', e.target.value)}
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                        >
+                          <option value="openai">OpenAI (Whisper API)</option>
+                          <option value="groq">Groq (Whisper Ultra-fast)</option>
+                          <option value="deepgram">Deepgram Nova</option>
+                          <option value="assemblyai">AssemblyAI</option>
+                          <option value="custom">Custom（相容 OpenAI 格式）</option>
+                        </select>
+                      </div>
+
+                      {/* API Key */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">API 金鑰</label>
+                        <input
+                          type="password"
+                          value={cloudAsrSettings.api_key}
+                          onChange={(e) => updateCloudAsrSetting('api_key', e.target.value)}
+                          placeholder="sk-..."
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                        />
+                      </div>
+
+                      {/* Base URL（Custom 才顯示）*/}
+                      {cloudAsrSettings.provider === 'custom' && (
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Base URL</label>
+                          <input
+                            type="text"
+                            value={cloudAsrSettings.base_url}
+                            onChange={(e) => updateCloudAsrSetting('base_url', e.target.value)}
+                            placeholder="https://api.example.com/v1"
+                            className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                          />
+                        </div>
+                      )}
+
+                      {/* 模型 */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">辨識模型</label>
+                        <input
+                          type="text"
+                          value={cloudAsrSettings.model}
+                          onChange={(e) => updateCloudAsrSetting('model', e.target.value)}
+                          placeholder={cloudAsrSettings.provider === 'openai' ? 'whisper-1' : cloudAsrSettings.provider === 'groq' ? 'whisper-large-v3-turbo' : ''}
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+                        />
+                      </div>
+
+                      {/* 操作按鈕列 */}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={testCloudAsrConnection}
+                          disabled={cloudAsrTesting || !cloudAsrSettings.api_key}
+                          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {cloudAsrTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <TestTube className="w-4 h-4" />}
+                          連線測試
+                        </button>
+                        {!cloudAsrSettings.enabled ? (
+                          <button
+                            onClick={() => activateCloudAsr()}
+                            disabled={!cloudAsrSettings.api_key}
+                            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-sky-600 hover:bg-sky-700 disabled:bg-sky-300 text-white rounded-lg transition-colors"
+                          >
+                            <Wifi className="w-4 h-4" />
+                            啟用雲端 ASR
+                          </button>
+                        ) : (
+                          <button
+                            onClick={deactivateCloudAsr}
+                            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors"
+                          >
+                            <WifiOff className="w-4 h-4" />
+                            停用雲端 ASR
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 連線測試結果 */}
+                      {cloudAsrTestResult && (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                          cloudAsrTestResult.success
+                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+                            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                        }`}>
+                          {cloudAsrTestResult.success
+                            ? <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                            : <XCircle className="w-4 h-4 flex-shrink-0" />}
+                          <span>{cloudAsrTestResult.success ? `連線成功${cloudAsrTestResult.text ? `，回傳：${cloudAsrTestResult.text}` : ''}` : `連線失敗：${cloudAsrTestResult.error}`}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'ai' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))]">
             <div className="p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 chinese-title">
@@ -1311,203 +2256,157 @@ const SettingsPage = () => {
                      } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                    />
                  </button>
+                </div>
+
+                {/* AI 優化快捷鍵說明 */}
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/50 dark:border-purple-800/30">
+                  <span className="text-purple-500 dark:text-purple-400 mt-0.5 shrink-0">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+                  </span>
+                  <div className="text-xs text-purple-700 dark:text-purple-300 leading-relaxed">
+                    <p className="font-semibold mb-0.5">快捷錄音</p>
+                    <p>按住觸發鍵（如 Right Ctrl）開始錄音時，同時按住 <kbd className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/40 rounded text-[10px] font-mono">Shift</kbd> 即可暫時啟用 AI 優化。錄音停止後自動關閉，不影響手動開啟的 AI 優化設定。</p>
+                  </div>
+                </div>
+
+                {/* 模型商選擇 */}
+               <div>
+                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                   {t('settings.aiProvider')}
+                 </label>
+                  <select
+                    value={selectedProviderId}
+                    onChange={(e) => {
+                      setSelectedProviderId(e.target.value);
+                      autoSaveAI();
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  >
+                   {AI_PROVIDERS.map(p => (
+                     <option key={p.id} value={p.id}>{p.label}</option>
+                   ))}
+                 </select>
                </div>
 
                {/* API Key */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t('settings.apiKey')} *
-                  </label>
+               <div>
+                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                   {t('settings.apiKey')} {selectedProviderId !== 'custom' && '*'}
+                 </label>
                   <div className="relative">
                     <input
                       type={showApiKey ? "text" : "password"}
-                      value={settings.ai_api_key}
-                      onChange={(e) => handleInputChange('ai_api_key', e.target.value)}
-                      placeholder={t('settings.apiKeyPlaceholder')}
+                      value={aiProviderKeys[selectedProviderId] || ''}
+                      onChange={(e) => setAiProviderKeys(prev => ({ ...prev, [selectedProviderId]: e.target.value }))}
+                      onBlur={() => {
+                        const apiKey = (aiProviderKeys[selectedProviderId] || '').trim();
+                        const provider = AI_PROVIDERS.find(p => p.id === selectedProviderId) || AI_PROVIDERS[0];
+                        const baseUrl = (aiProviderUrls[selectedProviderId] || provider.base_url).trim();
+                        const model = (aiProviderModels[selectedProviderId] || '').trim();
+                        if (apiKey && window.electronAPI) {
+                          setTesting(true);
+                          setAiSaveStatus(null);
+                          window.electronAPI.checkAIStatus({
+                            provider_id: selectedProviderId,
+                            api_key: apiKey,
+                            base_url: baseUrl || provider.base_url,
+                            model: model
+                          }).then(r => {
+                            setTestResult(r);
+                            if (r.available) {
+                              toast.success(t('settings.testSuccess'));
+                              autoSaveAI();
+                            } else {
+                              toast.error(t('settings.testFailed'), { description: r.error || t('settings.testFailedDesc') });
+                            }
+                          }).catch(() => {}).finally(() => setTesting(false));
+                        }
+                      }}
+                      placeholder={
+                        selectedProviderId === 'custom'
+                          ? t('settings.apiKeyOptional')
+                          : t('settings.apiKeyPlaceholder')
+                      }
                       className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                      {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {t('settings.apiKeyDesc')}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => window.electronAPI?.openExternal?.('https://jeffrey0117.github.io/SpeakSlow/#/guide')}
-                    className="mt-1 text-xs text-blue-500 hover:underline"
-                  >
-                    {t('settings.aiSetupHelp')} →
-                  </button>
-                </div>
+                   <button
+                     type="button"
+                     onClick={() => setShowApiKey(!showApiKey)}
+                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                   >
+                     {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                   </button>
+                 </div>
+                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                   {t('settings.apiKeyDesc')}
+                 </p>
+               </div>
 
-                {/* Base URL */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {t('settings.baseUrl')}
-                  </label>
+               {/* Base URL */}
+               <div>
+                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                   {t('settings.baseUrl')}
+                 </label>
                   <input
                     type="url"
-                    value={settings.ai_base_url}
-                    onChange={(e) => handleInputChange('ai_base_url', e.target.value)}
+                    value={aiProviderUrls[selectedProviderId] || AI_PROVIDERS.find(p => p.id === selectedProviderId)?.base_url || ''}
+                    onChange={(e) => {
+                      setAiProviderUrls(prev => ({ ...prev, [selectedProviderId]: e.target.value }));
+                      autoSaveAI();
+                    }}
                     placeholder="https://api.openai.com/v1"
                     className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {t('settings.baseUrlDesc')}
-                  </p>
-                </div>
+                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                   {t('settings.baseUrlDesc')}
+                 </p>
+               </div>
 
-                {/* Model */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                      {t('settings.aiModel')}
-                    </label>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={applyDeepSeekConfig}
-                        className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 rounded hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
-                      >
-                        DeepSeek
-                      </button>
-                      <button
-                        type="button"
-                        onClick={applyGeminiConfig}
-                        className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
-                      >
-                        Gemini
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetToOpenAI}
-                        className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-                      >
-                        OpenAI
-                      </button>
-                      <button
-                        type="button"
-                        onClick={applyOllamaConfig}
-                        className="text-xs px-2 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-                      >
-                        {t('settings.ollamaLocal')}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        id="predefined-model"
-                        name="model-type"
-                        checked={!customModel}
-                        onChange={() => setCustomModel(false)}
-                        className="w-3 h-3 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <label htmlFor="predefined-model" className="text-xs text-gray-700 dark:text-gray-300">
-                        {t('settings.predefinedModel')}
-                      </label>
-                    </div>
-                    
-                    {!customModel && (
-                      <select
-                        value={settings.ai_model}
-                        onChange={(e) => {
-                          const model = e.target.value;
-                          // 根據模型自動設定對應的 base URL
-                          let baseUrl = settings.ai_base_url;
-                          let providerName = '';
-
-                          if (model.startsWith('deepseek')) {
-                            baseUrl = 'https://api.deepseek.com';
-                            providerName = 'DeepSeek';
-                          } else if (model.startsWith('gpt')) {
-                            baseUrl = 'https://api.openai.com/v1';
-                            providerName = 'OpenAI';
-                          } else if (model.startsWith('gemini')) {
-                            baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-                            providerName = 'Gemini';
-                          } else if (model.startsWith('qwen') || model.startsWith('llama') || model.startsWith('gemma')) {
-                            baseUrl = 'http://localhost:11434/v1';
-                            providerName = t('settings.ollamaLocal');
-                          }
-
-                          // 換到「不同供應商」就清空 key（Ollama 用 dummy），
-                          // 避免帶著別家的 key（那串星號）去打新供應商 → 失敗。
-                          const providerChanged = baseUrl !== settings.ai_base_url;
-                          const isOllama = baseUrl.includes('localhost:11434');
-                          setSettings(prev => ({
-                            ...prev,
-                            ai_model: model,
-                            ai_base_url: baseUrl,
-                            ...(providerChanged ? { ai_api_key: isOllama ? (prev.ai_api_key || 'ollama') : '' } : {})
-                          }));
-
-                          if (providerName) {
-                            toast.info(t('settings.providerEndpointSet', { provider: providerName }));
-                          }
-                        }}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                      >
-                        <optgroup label={t('settings.modelGroups.deepseek')}>
-                          <option value="deepseek-v4-flash">{t('settings.modelOptions.deepseekChat')}</option>
-                          <option value="deepseek-v4-pro">DeepSeek V4 Pro (推理)</option>
-                        </optgroup>
-                        <optgroup label="OpenAI">
-                          <option value="gpt-4o-mini">GPT-4o Mini</option>
-                          <option value="gpt-4o">GPT-4o</option>
-                        </optgroup>
-                        <optgroup label="Gemini">
-                          <option value="gemini-2.5-flash">{t('settings.modelOptions.geminiFlash')}</option>
-                          <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
-                          <option value="gemini-2.5-pro">{t('settings.modelOptions.geminiPro')}</option>
-                          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-                        </optgroup>
-                        <optgroup label={t('settings.modelGroups.ollama')}>
-                          <option value="qwen2.5">{t('settings.modelOptions.qwen')}</option>
-                          <option value="qwen2.5:3b">{t('settings.modelOptions.qwenFast')}</option>
-                          <option value="llama3.2">Llama 3.2</option>
-                        </optgroup>
-                      </select>
-                    )}
-                    
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        id="custom-model"
-                        name="model-type"
-                        checked={customModel}
-                        onChange={() => setCustomModel(true)}
-                        className="w-3 h-3 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <label htmlFor="custom-model" className="text-xs text-gray-700 dark:text-gray-300">
-                        {t('settings.customModel')}
-                      </label>
-                    </div>
-
-                    {customModel && (
-                      <input
-                        type="text"
-                        value={settings.ai_model}
-                        onChange={(e) => handleInputChange('ai_model', e.target.value)}
-                        placeholder={t('settings.customModelPlaceholder')}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                      />
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {t('settings.aiModelDesc')}
-                  </p>
-                </div>
-              </div>
+                 {/* 模型選擇（下拉選單） */}
+                 <div>
+                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                     {t('settings.aiModel')}
+                   </label>
+                   <select
+                     value={aiProviderModels[selectedProviderId] || ''}
+                     onChange={(e) => {
+                       const val = e.target.value;
+                       setAiProviderModels(prev => ({ ...prev, [selectedProviderId]: val }));
+                       // 選擇後自動測試
+                       if (val && window.electronAPI) {
+                         const provider = AI_PROVIDERS.find(p => p.id === selectedProviderId) || AI_PROVIDERS[0];
+                         const apiKey = (aiProviderKeys[selectedProviderId] || '').trim();
+                         const baseUrl = (aiProviderUrls[selectedProviderId] || provider.base_url).trim();
+                         if (apiKey || selectedProviderId === 'custom') {
+                           setTesting(true);
+                           setAiSaveStatus(null);
+                           window.electronAPI.checkAIStatus({
+                             provider_id: selectedProviderId,
+                             api_key: apiKey,
+                             base_url: baseUrl || provider.base_url,
+                             model: val
+                           }).then(r => {
+                             setTestResult(r);
+                             if (r.available) {
+                               toast.success(t('settings.testSuccess'), { description: `${val}` });
+                               autoSaveAI();
+                             }
+                           }).catch(() => {}).finally(() => setTesting(false));
+                         }
+                       }
+                     }}
+                     className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                   >
+                     <option value="">{fetchingModels ? t('settings.fetchModels') + '...' : t('settings.aiModel')}</option>
+                     {aiModelsList.map(m => (
+                       <option key={m} value={m}>{m}</option>
+                     ))}
+                   </select>
+                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                     {t('settings.aiModelDesc')}
+                   </p>
+                 </div>
+             </div>
 
               {/* 测试结果显示 */}
               {testResult && (
@@ -1593,28 +2492,44 @@ const SettingsPage = () => {
                   </p>
                 </div>
 
-                <button
-                  onClick={saveSettings}
-                  disabled={saving || !settings.ai_api_key}
-                  className="flex items-center space-x-2 px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Save className="w-3 h-3" />
+                <div className="flex items-center space-x-2 text-sm">
+                  {testing && (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                      <span className="text-blue-600 dark:text-blue-400">{t('settings.testing')}</span>
+                    </>
                   )}
-                  <span>{saving ? t('settings.saving') : t('settings.saveSettings')}</span>
-                </button>
+                  {!testing && aiSaveStatus === 'saved' && (
+                    <>
+                      <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
+                      <span className="text-green-600 dark:text-green-400">{t('settings.statusSaved')}</span>
+                    </>
+                  )}
+                  {!testing && aiSaveStatus === 'saving' && (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-gray-500" />
+                      <span className="text-gray-500 dark:text-gray-400">{t('settings.saving')}</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
             )}
 
+            {activeTab === 'ai-style' && (
+          <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))]">
+            <div className="p-6">
+              <AIStylePackManager t={t} />
+            </div>
+          </div>
+            )}
+
             {activeTab === 'about' && (
             <div className="space-y-4 max-w-xl">
               {/* 專案 */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5 text-center">
+              <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] p-5 text-center">
                 <img
                   src="./icon.png"
                   alt={t('settings.aboutTab.logoAlt')}
@@ -1629,17 +2544,16 @@ const SettingsPage = () => {
               </div>
 
               {/* 作者 */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">{t('settings.aboutTab.authorTitle')}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.aboutTab.authorPrefix')}<strong>{t('settings.aboutTab.authorName')}</strong>{t('settings.aboutTab.authorSuffix')}</p>
+              <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] p-5">
+                <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line">{t('settings.aboutTab.authorPrefix')}<strong>{t('settings.aboutTab.authorName')}</strong>{t('settings.aboutTab.authorSuffix')}</p>
                 <a href="https://github.com/Jeffrey0117/SpeakSlow" target="_blank" rel="noreferrer"
                    className="inline-block text-xs text-blue-500 hover:underline mt-2">
-                  GitHub · Jeffrey0117/speakslow
+                  GitHub · Jeffrey0117/SpeakSlow
                 </a>
               </div>
 
               {/* 致謝 */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
+              <div className="bg-[hsl(var(--card))] rounded-xl shadow-lg border border-[hsl(var(--border))] p-5">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-1.5">
                   <Heart className="w-4 h-4 text-red-400" /> {t('settings.aboutTab.acknowledgements')}
                 </h3>

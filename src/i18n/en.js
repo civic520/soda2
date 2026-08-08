@@ -17,7 +17,7 @@ export default {
     outSrt: 'Subtitles SRT',
   },
   // App name
-  appName: 'SpeakSlow',
+  appName: 'soda2',
 
   // Settings page
   settings: {
@@ -28,6 +28,13 @@ export default {
     notificationsDesc: 'Control whether to show success and status notifications',
     language: 'Interface Language',
     languageDesc: 'Choose the language used for the app interface',
+    appTheme: 'Theme',
+    appThemeDesc: 'Choose the visual style of the app',
+    appThemeChanged: 'Theme changed',
+    themeSystem: 'System',
+    themePremiumLight: 'Modern Elegant',
+    themeDarkTech: 'Polar Night Forest',
+    themeZenNatural: 'Cool Tech',
     micDevice: 'Microphone',
     micDeviceDesc: 'Pick which mic to record from. The wrong/silent device causes garbled or repeating recognition.',
     micDeviceDefault: 'System default',
@@ -46,6 +53,7 @@ export default {
     typelessTriggerDesc: 'Press once to start recording, again to stop. If the default key clashes with other apps, switch to a function key (Mac has no Right Ctrl — use F8–F10).',
     typelessTriggerChanged: 'Trigger key updated',
     typelessTriggerDefault: 'Right Alt + Right Ctrl (default)',
+    typelessTriggerDefaultMac: 'Right Option (default)',
     typelessTriggerCtrlRight: 'Right Ctrl',
     typelessTriggerAltRight: 'Right Alt',
     autoFormatLists: 'Auto bullet list',
@@ -53,7 +61,9 @@ export default {
     autoLineBreak: 'Auto line break on pause',
     autoLineBreakDesc: 'Insert a line break after a longer pause. Off by default (thinking pauses won\'t split your text).',
     asrProfile: 'Performance mode',
-    asrProfileDesc: 'Pick Fast on older machines: 2-3x faster recognition, slightly lower accuracy',
+    asrProfileDesc: 'Built-in Paraformer exclusive. Automatically switches back to the built-in model if enabled under other models.',
+    asrProfileLevel: 'Performance level',
+    asrProfileLevelDesc: 'Pick Fast on older machines: 2-3x faster recognition, slightly lower accuracy',
     asrProfileStandard: 'Standard (most accurate)',
     asrProfileFast: 'Fast (older machines)',
     asrProfileChanged: 'Performance mode changed, applies to the next recognition',
@@ -76,7 +86,11 @@ export default {
     enableAI: 'Enable AI Text Enhancement',
     apiKey: 'API Key',
     apiKeyPlaceholder: 'Enter your AI API key',
+    apiKeyOptional: 'Optional (local LLM)',
     apiKeyDesc: 'API key used for AI text enhancement',
+    aiProvider: 'AI Provider',
+    fetchModels: 'Fetch Models',
+    availableModels: 'Available Models (click to select)',
     aiSetupHelp: 'Not sure how to set it up? See the guide',
     baseUrl: 'API Base URL',
     baseUrlDesc: 'API endpoint for the AI service; OpenAI-compatible APIs are supported',
@@ -105,6 +119,23 @@ export default {
       qwenFast: 'Qwen2.5 3B (faster)'
     },
 
+    aiStylePack: 'AI Style Packs',
+    aiStylePackDesc: 'Customize AI prompt styles. Create multiple packs and switch between them.',
+    aiStylePackBuiltin: 'Built-in',
+    aiStylePackNew: '+ New Style Pack',
+    aiStylePackEdit: 'Edit Style Pack',
+    aiStylePackDelete: 'Delete',
+    aiStylePackDeleteConfirm: 'Are you sure you want to delete "{name}"?',
+    aiStylePackName: 'Style Pack Name',
+    aiStylePackNamePlaceholder: 'Enter style pack name',
+    aiStylePackPrompt: 'Prompt template (use ${text} as placeholder for transcription text)',
+    aiStylePackMode: 'Mode',
+    aiStylePackSaveSuccess: 'Style pack saved',
+    aiStylePackDeleteSuccess: 'Style pack deleted',
+    aiStylePackApplied: 'Applied style pack: {name}',
+    aiStylePackSaved: 'Style pack saved and applied',
+    aiStylePackNameRequired: 'Please enter a style pack name',
+
     testConfig: 'Test Settings',
     testConfigDesc: 'Test the settings you are editing (no need to save)',
     testing: 'Testing...',
@@ -118,10 +149,11 @@ export default {
     saveSuccess: 'Settings saved',
     saveFailed: 'Failed to save settings',
     loadFailed: 'Failed to load settings',
+    statusSaved: 'Settings saved',
 
-    about: 'About SpeakSlow',
+    about: 'About soda2',
     aboutDesc: 'A Traditional Chinese speech-to-text app powered by Sherpa-ONNX and AI',
-    brandFull: 'SpeakSlow',
+    brandFull: 'soda2',
     features: {
       recognition: 'High-accuracy Chinese speech recognition',
       ai: 'AI-powered text enhancement',
@@ -132,14 +164,35 @@ export default {
     // Settings window sidebar tabs
     tabs: {
       general: 'General',
+      models: 'Model Selection',
       history: 'History',
       ai: 'AI Enhancement',
+      aiStylePack: 'AI Style Pack',
       hotkeys: 'Hotkeys',
       hotwords: 'Hotwords',
       dictionary: 'Dictionary',
       emoji: 'Symbols',
       permissions: 'Permissions',
       about: 'About'
+    },
+    style: {
+      title: 'AI Style Pack Palette',
+      description: 'Dynamically compile optimal AI refinement prompts by combining core main prompts, situational modifiers, domain vocabulary cards, and custom rules.',
+      tabs: {
+        mainPrompt: 'Main Prompt',
+        modes: 'Refinement Modes',
+        hotwords: 'Hotwords',
+        dicts: 'Domain Dictionaries',
+        customRules: 'Custom Rules',
+        backup: 'Backup & Restore'
+      },
+      toast: {
+        changesApplied: 'Settings applied to AI refinement system',
+        confirmDelete: 'Are you sure you want to delete this custom item? This action is irreversible.',
+        itemDeleted: 'Custom item deleted successfully',
+        confirmReset: 'Are you sure you want to reset this default item to factory settings?',
+        resetDone: 'Reset to default template content'
+      }
     },
     emoji: {
       title: 'Voice symbols',
@@ -175,11 +228,51 @@ export default {
     streamingModelDownloaded: 'Streaming model downloaded',
     streamingModelDownloadFailed: 'Failed to download streaming model: {error}',
 
+    // Sound feedback
+    soundFeedback: 'Sound Feedback',
+    soundFeedbackDesc: 'Play sounds and control system audio during recording',
+    soundFeedbackToggle: 'Recording Sounds',
+    soundFeedbackToggleDesc: 'Play a chime when recording starts and stops',
+    soundFeedbackVolume: 'Volume',
+    soundFeedbackVolumeDesc: 'Adjust the volume of recording feedback sounds',
+    soundTheme: 'Sound Theme',
+    soundThemeDesc: 'Choose the sound set for recording feedback',
+    testSound: 'Test Sound',
+    testSoundDesc: 'Preview the current sound theme',
+    testSoundPlay: '▶ Play',
+    muteWhileRecording: 'Mute While Recording',
+    muteWhileRecordingDesc: 'Temporarily mute all system audio during recording',
+    soundEnabled: 'Recording sounds enabled',
+    soundDisabled: 'Recording sounds disabled',
+    muteWhileRecordingEnabled: 'Will mute system audio during recording',
+    muteWhileRecordingDisabled: 'No longer mute system audio during recording',
+
     // Window controls
     windowControl: '🪟 Window Controls',
     windowControlDesc: 'Configure always-on-top and system tray behavior',
     windowOpacity: 'Window Opacity',
     windowOpacityDesc: 'Make the panel semi-transparent (mini and full panel share this) so you can see through it',
+    saveAudioFiles: 'Save Audio Files',
+    saveAudioFilesDesc: 'Disable to stop writing audio files to SSD (saves disk space; cost: re-transcription will be unavailable)',
+    audioRetention: 'Audio Retention Period',
+    audioRetentionDesc: 'Automatically clean up old recordings exceeding the period at startup',
+    saveAudio: 'Keep audio recordings',
+    saveAudioDesc: 'Save recordings so you can re-transcribe later. Turn off to reduce SSD writes and keep nothing (those cannot be re-transcribed).',
+    audioRetentionChanged: 'Retention updated',
+    retentionDays: 'Keep {n} days',
+    retentionForever: 'Keep forever',
+    autoStart: 'Launch at Startup',
+    autoStartDesc: 'Launch soda2 automatically when Windows or macOS starts up',
+    autoStartMinimized: 'Start Minimized to Tray',
+    autoStartMinimizedDesc: 'Keep main window hidden on startup to prevent desktop disruption',
+    autoStartEnabled: 'Auto-start on boot enabled',
+    autoStartDisabled: 'Auto-start on boot disabled',
+    autoStartMinimizedEnabled: 'Will start minimized to tray',
+    autoStartMinimizedDisabled: 'Will show main window on startup',
+    retention7: '7 Days',
+    retention30: '30 Days',
+    retention90: '90 Days',
+    retentionPermanent: 'Permanent',
     commandSection: 'Command Mode / Read Aloud',
     commandSectionDesc: 'Read-aloud voice and behavior for command mode (toggle with Ctrl+Shift+K)',
     openNotes: 'Open notes',
@@ -218,13 +311,13 @@ export default {
 
     // About tab
     aboutTab: {
-      brandSub: '聲聲慢',
-      logoAlt: 'SpeakSlow logo',
-      tagline: 'The fastest local voice input, built for Chinese · Free & private',
-      authorTitle: 'Author',
-      authorPrefix: 'Developed and maintained by ',
-      authorName: 'TailwindMaster',
-      authorSuffix: '.',
+      brandSub: '說打兔',
+      logoAlt: 'soda2 logo',
+      tagline: 'The fastest local & online voice input · Free & flexible',
+
+      authorPrefix: 'Based on ',
+      authorName: 'SpeakSlow by TailwindMaster',
+      authorSuffix: ', with additional features',
       acknowledgements: 'Acknowledgements',
       ackQuqu: 'The original project; this app builds on it with the sherpa-onnx engine and a reworked UI and interactions.',
       ackSherpa: 'On-device speech recognition engine.',
@@ -266,7 +359,21 @@ export default {
         toggleCommandMode: {
           name: 'Toggle command mode',
           description: 'Turn voice command mode on/off'
+        },
+        typelessBackupStop: {
+          name: 'TypeLess Backup Stop',
+          description: 'Backup hotkey for when Right Alt/Ctrl fails to stop recording (system under high load/screen recording). Press this to force-stop'
         }
+      },
+      aiOptimizeTrigger: {
+        title: 'AI Optimize Recording Trigger',
+        description: 'Press to start recording with AI text optimization, press again to stop',
+        none: 'Disabled',
+        altRight: 'Right Alt',
+        ctrlRight: 'Right Ctrl',
+        f11: 'F11',
+        f12: 'F12',
+        tip: 'Does not conflict with TypeLess trigger — assign different keys for each feature'
       }
     },
 
@@ -481,7 +588,7 @@ export default {
       unitChars: 'chars',
       unitSpeed: 'chars/min',
       hourUnit: 'h',
-      localOnly: '🔒 Data stays on your device · SpeakSlow'
+      localOnly: '🔒 Data stays on your device · soda2'
     },
     dailyChart: {
       title: 'Daily Characters · Last 14 Days',
@@ -537,7 +644,7 @@ export default {
     accTestSuccessDesc: 'Accessibility permission works! Check whether the test text appeared in another app.',
     accNeededTitle: '❌ Accessibility permission required',
     accNeededDesc: 'Please grant accessibility permission in system settings to enable automatic text pasting.',
-    testText: 'SpeakSlow accessibility test'
+    testText: 'soda2 accessibility test'
   },
 
   // Error messages
@@ -547,6 +654,7 @@ export default {
     asrPreparing: 'Preparing the speech recognition service, please wait...',
     browserNoRecording: 'Your browser does not support audio recording',
     cannotStartRecording: 'Could not start recording: {error}',
+    micInitializing: 'Microphone starting, please try again in a moment',
     emptyRecording: 'The recording is empty; please record again',
     recordingTooShort: 'The recording is too short; please speak before stopping',
     audioProcessingFailed: 'Audio processing failed: {error}',
@@ -595,7 +703,8 @@ export default {
     modelNotReady: 'Model not ready, please wait...',
     languageChanged: 'Language changed',
     clickTarget: 'Click where you want the text pasted',
-    cancelled: 'Cancelled'
+    cancelled: 'Cancelled',
+    emergencyReset: 'Emergency reset: Recording stopped and hotkey state reset (Ctrl+Shift+F9)'
   },
 
   // Language options
