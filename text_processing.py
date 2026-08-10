@@ -456,6 +456,58 @@ def format_lists(text):
     return (intro + '：\n' + body) if intro else body
 
 
+# 中文序數轉阿拉伯數字（預設關閉）：由設定 convert_ordinal_numbers 控制，
+# 只處理「序數列點」（一點一/一點二、一、二、三），不碰一般中文數字。
+_ORDINAL_ENABLED = False
+
+
+def set_ordinal_conversion_enabled(enabled):
+    global _ORDINAL_ENABLED
+    _ORDINAL_ENABLED = bool(enabled)
+
+
+_CN_NUM = {c: str(i) for i, c in enumerate('零一二三四五六七八九')}
+
+
+def convert_ordinals(text):
+    """把語音輸出的中文序數列點轉成阿拉伯數字。
+    兩類：
+    1. 「一點一，一點二，一點三」→「1.1 1.2 1.3」
+    2. 「一、開心；二、難過；三、高興。」→「1.開心 2.難過 3.高興。」
+    只在 _ORDINAL_ENABLED 為 True 時生效。"""
+    if not _ORDINAL_ENABLED or not text:
+        return text
+    import re
+    # ---- 類別 1：一點X 連續編號 ----
+    pat = re.compile(r'一點([零一二三四五六七八九])')
+    matches = list(pat.finditer(text))
+    if len(matches) >= 2:
+        out = text
+        for m in reversed(matches):
+            n = _CN_NUM[m.group(1)]
+            out = out[:m.start()] + f'1.{n}' + out[m.end():]
+        # 項間分隔標點 → 空白（一點一，一點二 → 1.1 1.2）
+        out = re.sub(r'(?<=1\.[0-9])[，,、；;]+(?=1\.[0-9])', ' ', out)
+        return out
+    # ---- 類別 2：一、二、三 列表 ----
+    items = re.findall(r'([一二三四五六七八九十])[、，,；;]', text)
+    if len(items) >= 2:
+        nums = [_CN_NUM[c] for c in items if c in _CN_NUM]
+        if len(nums) >= 2:
+            out = text
+            # 依序替換每個「序數+分隔標點」開頭 → 阿拉伯數字+「.」
+            for c in items:
+                for sep in '、，,；;':
+                    n = _CN_NUM.get(c)
+                    if n and (c + sep) in out:
+                        out = out.replace(c + sep, n + '.', 1)
+                        break
+            # 項間分隔標點 → 空白（一、開心；二、難過 → 1.開心 2.難過）
+            out = re.sub(r'(?<=[\w。！？])[，,、；;]+(?=[0-9]\.)', ' ', out)
+            return out
+    return text
+
+
 # 講英文時的 uh/um/ah 常被雙語模型聽成這些中文語氣字 — 英文為主的行裡視為 filler
 _EN_FILLER_CJK = set('啊嗯呃哦喔欸唉誒呀嘛')
 
