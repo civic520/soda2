@@ -378,6 +378,7 @@ test("_convertOrdinals leaves non-list text unchanged", () => {
   assert.equal(manager._convertOrdinals("好一點"), "好一點");
   assert.equal(manager._convertOrdinals("第一"), "第一");
   assert.equal(manager._convertOrdinals("一月"), "一月");
+  assert.equal(manager._convertOrdinals("十、十一、十二"), "十、十一、十二");
 });
 
 test("startServer adds -ngl when acceleration resolves ngl true", async () => {
