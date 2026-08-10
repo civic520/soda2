@@ -189,6 +189,7 @@ test("startServer deduplicates concurrent calls (single spawn)", async () => {
   manager.ensureLlamaBinary = async () => ({ success: true, binaryPath: path.join(manager.getBinaryDir(), "llama-server.exe") });
   manager.ensureModelAvailable = async () => ({ success: true, model_path: manager.getModelCachePath() });
   manager.ensureFfmpegAvailable = async () => ({ success: true, ffmpegDir: null });
+  manager.ensureCudaRuntime = async () => ({ success: true });
   manager._findFfmpeg = async () => ({ success: true, ffmpegDir: null });
   manager._waitForServerReady = async () => true;
   await Promise.all([manager.startServer(), manager.startServer()]);

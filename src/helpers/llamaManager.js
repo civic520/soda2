@@ -12,6 +12,8 @@ const LLAMA_MODEL_CONFIG = {
   mmproj_url: "https://huggingface.co/foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF/resolve/main/mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf",
   binary_url: "https://github.com/ggml-org/llama.cpp/releases/download/b9562/llama-b9562-bin-win-cuda-12.4-x64.zip",
   binary_filename: "llama-b9562-bin-win-cuda-12.4-x64.zip",
+  cudart_url: "https://github.com/ggml-org/llama.cpp/releases/download/b9562/cudart-llama-bin-win-cuda-12.4-x64.zip",
+  cudart_filename: "cudart-llama-bin-win-cuda-12.4-x64.zip",
   // 每個檔案的最小完整大小（bytes）——用於判斷「部分下載殘留」不算完成。
   // 採用實際檔案大小的 95% 作為下限，避免檔案大小微小差異造成誤判刪除。
   file_sizes: {
@@ -227,6 +229,33 @@ class LlamaManager {
       progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 50 });
     }
     return { success: true, binaryPath: binPath };
+  }
+
+  // CUDA 二進位（llama-b9562-bin-win-cuda）只含 ggml-cuda.dll，
+  // 執行時還需要 cudart/cublas runtime DLL，官方放在獨立 zip 內。
+  // 缺失時 llama-server 會退到純 CPU 模式。
+  async ensureCudaRuntime(progressCallback = null) {
+    const config = this.getModelConfig();
+    const binDir = this.getBinaryDir();
+    const cudartPath = path.join(binDir, "cudart64_12.dll");
+    if (this._getExistingFileSize(cudartPath) > 0) {
+      return { success: true, already_downloaded: true };
+    }
+    const zipPath = path.join(binDir, config.cudart_filename);
+    await this.downloadFile(config.cudart_url, zipPath, (p) => {
+      if (progressCallback) {
+        progressCallback({ stage: "downloading-cudart", model: "asr", progress: p.progress, overall_progress: Math.round(p.progress / 2) });
+      }
+    });
+    await this.extractZip(zipPath, binDir);
+    this._forceDeletePath(zipPath);
+    const required = ["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"];
+    for (const f of required) {
+      if (this._getExistingFileSize(path.join(binDir, f)) <= 0) {
+        return { success: false, error: `CUDA runtime DLL 缺失: ${f}` };
+      }
+    }
+    return { success: true };
   }
 
   async ensureModelAvailable(progressCallback = null) {
@@ -490,6 +519,14 @@ class LlamaManager {
     args.push("--port", String(this.getServerPort()));
     args.push("--host", "127.0.0.1");
     args.push("--ctx-size", "4096");
+    // GPU 加速：CUDA runtime DLL 存在時卸載到 GPU；否則省略 -ngl（純 CPU）
+    const cudaStatus = await this.ensureCudaRuntime();
+    if (cudaStatus.success) {
+      args.push("-ngl", "999");
+      this.logger.info && this.logger.info("llama-server 啟用 GPU 加速（CUDA）");
+    } else {
+      this.logger.warn && this.logger.warn("CUDA runtime 不可用，llama-server 將以 CPU 運行:", cudaStatus.error);
+    }
 
     const spawnEnv = Object.assign({}, process.env);
     const ffmpegDir = (await this._findFfmpeg()).ffmpegDir;
