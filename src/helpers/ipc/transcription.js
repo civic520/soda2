@@ -279,7 +279,9 @@ module.exports = function register(ctx) {
       if (!fs.existsSync(record.audio_path)) {
         return { success: false, error: "錄音檔已不存在" };
       }
-      const result = await ctx.sherpaManager.transcribeFilePath(record.audio_path, options);
+      const result = isGgufModel(ctx)
+        ? await ctx.llamaManager.transcribeFilePath(record.audio_path, options)
+        : await ctx.sherpaManager.transcribeFilePath(record.audio_path, options);
       if (!result || !result.success) {
         return { success: false, error: result?.error || "辨識失敗" };
       }

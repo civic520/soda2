@@ -555,6 +555,21 @@ class LlamaManager {
       throw error;
     }
   }
+
+  async transcribeFilePath(audioPath, options = {}) {
+    if (!this.serverReady) {
+      await this.startServer();
+    }
+    const audioBlob = await fs.promises.readFile(audioPath);
+    const result = await this.transcribeAudio(audioBlob, options);
+    return {
+      success: true,
+      text: result.text.trim(),
+      raw_text: result.raw_text,
+      confidence: result.confidence || 0.95,
+      language: result.language || "zh-CN",
+    };
+  }
 }
 
 module.exports = LlamaManager;

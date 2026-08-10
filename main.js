@@ -277,7 +277,6 @@ async function startApp() {
     logger.warn("Sherpa 在启动时不可用，这不是关键问题", err);
   });
 
-  // 若當前模型是 GGUF，啟動時同步初始化 llama-server（失敗不阻擋應用）
   if (databaseManager.getSetting("asr_model_type", "paraformer") === "qwen3_asr_gguf") {
     llamaManager.startServer().catch((err) => {
       logger.warn("llama-server 啟動失敗（不阻擋應用）:", err && err.message);
