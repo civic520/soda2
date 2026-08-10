@@ -43,9 +43,15 @@ test("checkModelFiles reports downloaded when gguf exists with size", async () =
   const config = manager.getModelConfig();
   const dir = manager.getModelCachePath();
   await fs.promises.mkdir(dir, { recursive: true });
-  await fs.promises.writeFile(path.join(dir, "Qwen3-ASR-1.7B-Q4_K_M.gguf"), "x".repeat(1024));
+  const writeComplete = async (name) => {
+    const expected = config.file_sizes && config.file_sizes[name];
+    const fd = await fs.promises.open(path.join(dir, name), "w");
+    await fd.truncate(expected || 1024);
+    await fd.close();
+  };
+  await writeComplete("Qwen3-ASR-1.7B-Q4_K_M.gguf");
   if (config.mmproj_url) {
-    await fs.promises.writeFile(path.join(dir, path.basename(config.mmproj_url)), "x".repeat(1024));
+    await writeComplete(path.basename(config.mmproj_url));
   }
   const result = await manager.checkModelFiles();
   assert.equal(result.models_downloaded, true);
@@ -80,7 +86,11 @@ test("ensureModelAvailable downloads missing gguf when model dir exists", async 
   await fs.promises.mkdir(dir, { recursive: true });
   const config = manager.getModelConfig();
   const writeFile = async (url, dest) => {
-    await fs.promises.writeFile(dest, "x".repeat(1024));
+    const expected = config.file_sizes && config.file_sizes[path.basename(dest)];
+    const size = expected || 1024;
+    const fd = await fs.promises.open(dest, "w");
+    await fd.truncate(size);
+    await fd.close();
   };
   manager.downloadFile = writeFile;
   const result = await manager.ensureModelAvailable();
@@ -129,12 +139,17 @@ test("downloadFile follows redirects with relative location", async () => {
     close(cb) { if (cb) cb(); },
     emit() {},
   };
+  manager._forceDeletePath = () => {};
+  manager._getExistingFileSize = () => 4;
   const fsCreateWriteStream = fs.createWriteStream;
+  const fsRenameSync = fs.renameSync;
   fs.createWriteStream = () => stream;
+  fs.renameSync = () => {};
   try {
     await manager.downloadFile("https://huggingface.co/a/b", dest);
   } finally {
     fs.createWriteStream = fsCreateWriteStream;
+    fs.renameSync = fsRenameSync;
   }
   assert.ok(calls.length >= 2);
   assert.ok(calls[1].includes("huggingface.co"));
@@ -294,9 +309,14 @@ test("ensureModelAvailable reports overall_progress in 50-100 range", async () =
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-modelprog-"));
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager._forceDeletePath = () => {};
+  const config = manager.getModelConfig();
   const writeFile = async (url, dest, cb) => {
     cb({ downloaded: 10, total: 20, progress: 50 });
-    await fs.promises.writeFile(dest, "x".repeat(1024));
+    const expected = config.file_sizes && config.file_sizes[path.basename(dest)];
+    const size = expected || 1024;
+    const fd = await fs.promises.open(dest, "w");
+    await fd.truncate(size);
+    await fd.close();
   };
   manager.downloadFile = writeFile;
   const events = [];
@@ -307,4 +327,15 @@ test("ensureModelAvailable reports overall_progress in 50-100 range", async () =
   }
   assert.equal(events[events.length - 1].stage, "finished");
   assert.equal(events[events.length - 1].overall_progress, 100);
+});
+
+test("checkModelFiles treats partial download as missing", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-partial-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const dir = manager.getModelCachePath();
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(path.join(dir, "Qwen3-ASR-1.7B-Q4_K_M.gguf"), "partial");
+  const result = await manager.checkModelFiles();
+  assert.equal(result.models_downloaded, false);
+  assert.deepEqual(result.details.missing_files, ["Qwen3-ASR-1.7B-Q4_K_M.gguf", "mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf"]);
 });

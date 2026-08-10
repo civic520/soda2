@@ -12,6 +12,11 @@ const LLAMA_MODEL_CONFIG = {
   mmproj_url: "https://huggingface.co/foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF/resolve/main/mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf",
   binary_url: "https://github.com/ggml-org/llama.cpp/releases/download/b9562/llama-b9562-bin-win-cuda-12.4-x64.zip",
   binary_filename: "llama-b9562-bin-win-cuda-12.4-x64.zip",
+  // 每個檔案的最小完整大小（bytes）——用於判斷「部分下載殘留」不算完成
+  file_sizes: {
+    "Qwen3-ASR-1.7B-Q4_K_M.gguf": 1223 * 1024 * 1024,
+    "mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf": 211 * 1024 * 1024,
+  },
 };
 
 class LlamaManager {
@@ -59,21 +64,41 @@ class LlamaManager {
   }
 
   downloadFile(url, destPath, progressCallback = null) {
+    // 寫入 .part 暫存檔，完成後 rename 成目標檔。
+    // 避免直接開目標檔時遇到 EPERM（殘留檔案被 Defender/ACL 鎖定），
+    // 也讓部分下載的殘留檔不會被當成「已存在」。
+    const partPath = destPath + ".part";
+    this._forceDeletePath(partPath);
     return new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(destPath);
+      const file = fs.createWriteStream(partPath);
+      const finalize = (err) => {
+        file.close(() => {
+          if (err) {
+            this._forceDeletePath(partPath);
+            reject(err);
+            return;
+          }
+          this._forceDeletePath(destPath);
+          try {
+            fs.renameSync(partPath, destPath);
+            resolve();
+          } catch (renameErr) {
+            this._forceDeletePath(partPath);
+            reject(renameErr);
+          }
+        });
+      };
       const request = this.httpsGet(url, (response) => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           file.close();
-          fs.promises.unlink(destPath).catch(() => {});
+          this._forceDeletePath(partPath);
           const location = response.headers.location;
           const next = location.startsWith("http") ? location : new URL(location, url).href;
           this.downloadFile(next, destPath, progressCallback).then(resolve, reject);
           return;
         }
         if (response.statusCode !== 200) {
-          file.close();
-          fs.promises.unlink(destPath).catch(() => {});
-          reject(new Error(`Download failed with HTTP ${response.statusCode}`));
+          finalize(new Error(`Download failed with HTTP ${response.statusCode}`));
           return;
         }
         const total = Number(response.headers["content-length"] || 0);
@@ -85,16 +110,12 @@ class LlamaManager {
           }
         });
         response.pipe(file);
-        file.on("finish", () => file.close(resolve));
+        file.on("finish", () => finalize(null));
       });
-      request.on("error", (error) => {
-        file.close();
-        fs.promises.unlink(destPath).catch(() => {});
-        reject(error);
-      });
+      request.on("error", (error) => finalize(error));
       file.on("error", (error) => {
         request.destroy();
-        reject(error);
+        finalize(error);
       });
     });
   }
@@ -187,7 +208,7 @@ class LlamaManager {
 
   async ensureLlamaBinary(progressCallback = null) {
     const binPath = this.getLlamaServerPath();
-    if (fs.existsSync(binPath)) {
+    if (this._getExistingFileSize(binPath) > 0) {
       return { success: true, binaryPath: binPath, already_downloaded: true };
     }
     const config = this.getModelConfig();
@@ -225,10 +246,14 @@ class LlamaManager {
     if (config.mmproj_url) files.push(path.basename(config.mmproj_url));
     for (const filename of files) {
       const dest = path.join(targetDir, filename);
+      const expectedSize = config.file_sizes && config.file_sizes[filename];
       const existing = this._getExistingFileSize(dest);
-      if (existing > 0) {
+      if (existing > 0 && (!expectedSize || existing >= expectedSize)) {
         overallDownloaded += existing;
         continue;
+      }
+      if (existing > 0) {
+        this._forceDeletePath(dest);
       }
       const url = filename.startsWith("mmproj")
         ? config.mmproj_url
@@ -241,9 +266,9 @@ class LlamaManager {
         }
       });
       const postSize = this._getExistingFileSize(dest);
-      if (postSize === 0) {
+      if (postSize === 0 || (expectedSize && postSize < expectedSize)) {
         this._forceDeletePath(dest);
-        throw new Error(`下載的模型檔案為空（0 bytes）`);
+        throw new Error(`下載的模型檔案不完整（${filename} 預期 ${expectedSize} bytes，實際 ${postSize} bytes）`);
       }
       overallDownloaded += postSize;
     }
@@ -251,6 +276,13 @@ class LlamaManager {
       progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 100 });
     }
     return { success: true, model_path: targetDir };
+  }
+
+  _isFileComplete(filePath, expectedSize) {
+    const sz = this._getExistingFileSize(filePath);
+    if (sz <= 0) return false;
+    if (!expectedSize) return true;
+    return sz >= expectedSize;
   }
 
   async checkModelFiles() {
@@ -268,11 +300,11 @@ class LlamaManager {
       const config = this.getModelConfig();
       const missingFiles = [];
       for (const f of config.required_files) {
-        if (this._getExistingFileSize(path.join(modelPath, f)) <= 0) missingFiles.push(f);
+        if (!this._isFileComplete(path.join(modelPath, f), config.file_sizes && config.file_sizes[f])) missingFiles.push(f);
       }
       if (config.mmproj_url) {
         const m = path.basename(config.mmproj_url);
-        if (this._getExistingFileSize(path.join(modelPath, m)) <= 0) missingFiles.push(m);
+        if (!this._isFileComplete(path.join(modelPath, m), config.file_sizes && config.file_sizes[m])) missingFiles.push(m);
       }
       const allDownloaded = missingFiles.length === 0;
       return {
