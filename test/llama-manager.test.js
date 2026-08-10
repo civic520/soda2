@@ -192,6 +192,7 @@ test("startServer deduplicates concurrent calls (single spawn)", async () => {
   manager.ensureCudaRuntime = async () => ({ success: true });
   manager._findFfmpeg = async () => ({ success: true, ffmpegDir: null });
   manager._waitForServerReady = async () => true;
+  manager.accelerationDetector = { resolveForEngine: async () => ({ ngl: false }) };
   await Promise.all([manager.startServer(), manager.startServer()]);
   assert.equal(spawnCount, 1);
   assert.equal(manager.serverReady, true);
