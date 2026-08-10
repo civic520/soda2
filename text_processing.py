@@ -490,21 +490,40 @@ def convert_ordinals(text):
         out = re.sub(r'(?<=1\.[0-9])[，,、；;]+(?=1\.[0-9])', ' ', out)
         return out
     # ---- 類別 2：一、二、三 列表 ----
-    items = re.findall(r'([一二三四五六七八九十])[、，,；;]', text)
-    if len(items) >= 2:
-        nums = [_CN_NUM[c] for c in items if c in _CN_NUM]
-        if len(nums) >= 2:
-            out = text
-            # 依序替換每個「序數+分隔標點」開頭 → 阿拉伯數字+「.」
-            for c in items:
-                for sep in '、，,；;':
-                    n = _CN_NUM.get(c)
-                    if n and (c + sep) in out:
-                        out = out.replace(c + sep, n + '.', 1)
-                        break
-            # 項間分隔標點 → 空白（一、開心；二、難過 → 1.開心 2.難過）
-            out = re.sub(r'(?<=[\w。！？])[，,、；;]+(?=[0-9]\.)', ' ', out)
-            return out
+    def _in_word(start):
+        before1 = text[max(0, start - 1):start]
+        before2 = text[max(0, start - 2):start]
+        return (before1 and before1 in '第星期週') or before2 == '星期'
+
+    item_ms = [m for m in re.finditer(r'([一二三四五六七八九十])[、，,；;]', text)
+               if not _in_word(m.start())]
+    if len(item_ms) >= 2:
+        # 末項可能無尾標點（一、二、三 的「三」）
+        last_end = item_ms[-1].end()
+        tail_m = re.match(
+            r'\s*([一二三四五六七八九十])\s*[。！？!?]?\s*$', text[last_end:])
+        tail = None
+        if tail_m:
+            t_start = last_end + tail_m.start(1)
+            if not _in_word(t_start):
+                tail = (t_start, tail_m.group(1))
+        starts = [(m.start(), m.group(1)) for m in item_ms]
+        if tail:
+            starts.append(tail)
+        if sum(1 for _, c in starts if c in _CN_NUM) < 2:
+            return text
+        region_end = tail[0] + 1 if tail else last_end
+        out = list(text)
+        # 列表區間內的分隔標點 → 空格（項間）
+        for i in range(item_ms[0].start(), region_end):
+            if out[i] in '、，,；;':
+                out[i] = ' '
+        # 每個項開頭序數 → 數字 + 「.」
+        for i, c in starts:
+            n = _CN_NUM.get(c)
+            if n:
+                out[i] = n + '.'
+        return re.sub(r' +', ' ', ''.join(out)).strip()
     return text
 
 
