@@ -12,10 +12,11 @@ const LLAMA_MODEL_CONFIG = {
   mmproj_url: "https://huggingface.co/foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF/resolve/main/mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf",
   binary_url: "https://github.com/ggml-org/llama.cpp/releases/download/b9562/llama-b9562-bin-win-cuda-12.4-x64.zip",
   binary_filename: "llama-b9562-bin-win-cuda-12.4-x64.zip",
-  // 每個檔案的最小完整大小（bytes）——用於判斷「部分下載殘留」不算完成
+  // 每個檔案的最小完整大小（bytes）——用於判斷「部分下載殘留」不算完成。
+  // 採用實際檔案大小的 95% 作為下限，避免檔案大小微小差異造成誤判刪除。
   file_sizes: {
-    "Qwen3-ASR-1.7B-Q4_K_M.gguf": 1223 * 1024 * 1024,
-    "mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf": 211 * 1024 * 1024,
+    "Qwen3-ASR-1.7B-Q4_K_M.gguf": Math.round(1282435168 * 0.95),
+    "mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf": Math.round(221032992 * 0.95),
   },
 };
 
@@ -390,12 +391,35 @@ class LlamaManager {
       "C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe",
       "C:\\Program Files\\Gyan.FFmpeg\\bin\\ffprobe.exe",
     ];
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const wingetRoot = path.join(localAppData, "Microsoft", "WinGet", "Packages");
+    if (fs.existsSync(wingetRoot)) {
+      try {
+        for (const entry of fs.readdirSync(wingetRoot)) {
+          if (entry.toLowerCase().includes("ffmpeg")) {
+            const pkg = path.join(wingetRoot, entry);
+            const recurse = (dir) => {
+              try {
+                for (const sub of fs.readdirSync(dir)) {
+                  if (sub.toLowerCase() === "ffprobe.exe") {
+                    candidates.push(path.join(dir, sub));
+                  }
+                  const full = path.join(dir, sub);
+                  if (fs.statSync(full).isDirectory()) recurse(full);
+                }
+              } catch (e) { /* ignore */ }
+            };
+            recurse(pkg);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
     for (const c of candidates) {
       if (fs.existsSync(c)) return { success: true, ffmpegDir: path.dirname(c) };
     }
     try {
       const { execFileSync } = require("child_process");
-      const out = execFileSync("ffprobe", ["-version"], { windowsHide: true, stdio: "ignore" });
+      execFileSync("ffprobe", ["-version"], { windowsHide: true, stdio: "ignore" });
       return { success: true, ffmpegDir: null };
     } catch (e) {
       return { success: false, error: "找不到 ffmpeg/ffprobe，請安裝 FFmpeg 或下載靜態 build" };

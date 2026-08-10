@@ -959,6 +959,13 @@ class SherpaManager {
 
   async _startSherpaServer() {
     try {
+      // GGUF 模型由 llamaManager 負責，sherpa_server.py 不支援 --model-type qwen3_asr_gguf
+      const activeModelType = this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
+      if (activeModelType === "qwen3_asr_gguf") {
+        this.logger.info && this.logger.info("目前使用 GGUF 模型，跳過 Sherpa 服務器啟動");
+        return;
+      }
+
       this.logger.info && this.logger.info("啟動 Sherpa 服務器...");
 
       // 打包的 sherpa_server.exe 自帶 sherpa-onnx，免檢查系統 Python。
