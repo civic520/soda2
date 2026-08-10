@@ -105,3 +105,58 @@ DONE
 ## 未修改
 - fallback `replace("voconly/...", "foryoung365/...")` 保留（Task 4 處理）。
 - `downloadFile` 重定向邏輯未動（既有測試覆蓋）。
+
+---
+
+# 審查修正 2（subagent）— 2026-08-10
+
+## Status
+DONE
+
+## Commit
+見下方 `git log`（本次修正 commit）。
+
+## 修正項目（Critical：`_getExistingFileSize` ENOENT rethrow）
+
+### Root Cause
+`_getExistingFileSize(filePath)` 原先在 `statSync` 失敗且非 `EPERM` 時 rethrow。檔案不存在（`ENOENT`）即被 rethrow，導致：
+1. `checkModelFiles` 目錄存在但模型檔缺失時 → `{ success: false, error: "ENOENT" }`（遺失 `missing_files` 細節，應為 `success: true, models_downloaded: false`）
+2. `getDownloadProgress` 目錄存在但檔案缺失時 → `{ success: false }`（應為 `overall_progress: 0`）
+3. `ensureModelAvailable` 乾淨目錄中第一支不存在的檔案就 reject → 任何需要下載的情況都直接失敗
+
+### 變更（src/helpers/llamaManager.js）
+`_getExistingFileSize` 改為（仿 sherpaManager 語意）：
+- `if (!fs.existsSync(filePath)) return 0;`（放在 `statSync` 之前，檔案不存在不 rethrow）
+- statSync 成功 → 回 size（>0 否則 0）
+- statSync 失敗且 `e.code === "EPERM"` → `_forceDeletePath` 後回 0
+- statSync 失敗其他錯誤 → rethrow
+
+（未加入註解。）
+
+## 測試（test/llama-manager.test.js 追加 3 個）
+1. `checkModelFiles reports missing files when model dir exists but gguf missing` — 目錄存在但模型檔缺失，回 `{ success: true, models_downloaded: false }` 且 `details.missing_files` 非空（不拋錯）
+2. `getDownloadProgress returns zero progress when model dir exists but files missing` — 回 `{ success: true, overall_progress: 0 }`（不拋錯）
+3. `ensureModelAvailable downloads missing gguf when model dir exists` — 目錄存在但 GGUF 缺失，mock `downloadFile` 寫入檔案，最終回 `{ success: true, model_path }`，並驗證 GGUF 與 mmproj 檔案已落地
+
+既有測試全數保留。
+
+執行指令：`node --test test/llama-manager.test.js`
+
+```
+✔ llama model config exposes gguf required files
+✔ llama model cache path resolves under userData/models
+✔ llama server binary path points at llama-server.exe on win32
+✔ checkModelFiles reports not downloaded when model dir missing
+✔ checkModelFiles reports downloaded when gguf exists with size
+✔ checkModelFiles reports missing files when model dir exists but gguf missing
+✔ getDownloadProgress returns zero progress when model dir exists but files missing
+✔ ensureModelAvailable downloads missing gguf when model dir exists
+✔ deleteModelFiles returns success when model directory does not exist
+✔ downloadFile follows redirects with relative location
+ℹ tests 10
+ℹ pass 10
+ℹ fail 0
+ℹ duration_ms 206.6054
+```
+
+語法檢查：`node --check src/helpers/llamaManager.js` 與 `node --check test/llama-manager.test.js` 皆通過。

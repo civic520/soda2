@@ -52,6 +52,46 @@ test("checkModelFiles reports downloaded when gguf exists with size", async () =
   assert.equal(result.details.model_path, dir);
 });
 
+test("checkModelFiles reports missing files when model dir exists but gguf missing", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-check3-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const dir = manager.getModelCachePath();
+  await fs.promises.mkdir(dir, { recursive: true });
+  const result = await manager.checkModelFiles();
+  assert.equal(result.success, true);
+  assert.equal(result.models_downloaded, false);
+  assert.ok(result.details.missing_files.length > 0);
+});
+
+test("getDownloadProgress returns zero progress when model dir exists but files missing", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-prog-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const dir = manager.getModelCachePath();
+  await fs.promises.mkdir(dir, { recursive: true });
+  const result = await manager.getDownloadProgress();
+  assert.equal(result.success, true);
+  assert.equal(result.overall_progress, 0);
+});
+
+test("ensureModelAvailable downloads missing gguf when model dir exists", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ensure-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const dir = manager.getModelCachePath();
+  await fs.promises.mkdir(dir, { recursive: true });
+  const config = manager.getModelConfig();
+  const writeFile = async (url, dest) => {
+    await fs.promises.writeFile(dest, "x".repeat(1024));
+  };
+  manager.downloadFile = writeFile;
+  const result = await manager.ensureModelAvailable();
+  assert.equal(result.success, true);
+  assert.equal(result.model_path, dir);
+  assert.ok(fs.existsSync(path.join(dir, "Qwen3-ASR-1.7B-Q4_K_M.gguf")));
+  if (config.mmproj_url) {
+    assert.ok(fs.existsSync(path.join(dir, path.basename(config.mmproj_url))));
+  }
+});
+
 test("deleteModelFiles returns success when model directory does not exist", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-del-"));
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
