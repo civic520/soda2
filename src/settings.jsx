@@ -1361,9 +1361,15 @@ const SettingsPage = () => {
                         await window.electronAPI.setSetting('asr_acceleration', v);
                       }
                       toast.success(t('settings.asrAccelerationChanged'));
-                      // 加速模式變更需要重啟引擎才生效
-                      if (window.electronAPI && window.electronAPI.restartSherpaServer) {
-                        await window.electronAPI.restartSherpaServer();
+                      // 僅在目前模型已下載（已啟用）時才重啟引擎，讓加速設定生效
+                      try {
+                        const activeType = selectedModelType || 'paraformer';
+                        const status = await window.electronAPI?.checkModelExists?.(activeType);
+                        if (status?.models_downloaded && window.electronAPI?.restartSherpaServer) {
+                          await window.electronAPI.restartSherpaServer();
+                        }
+                      } catch (err) {
+                        console.error('重啟引擎失敗（非阻擋）:', err);
                       }
                     }}
                     className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"

@@ -117,7 +117,7 @@ class SherpaManager {
   buildPythonEnvironment() { return this.pythonResolver.buildPythonEnvironment(); }
 
   async buildAccelerationEnv(detector = null) {
-    const env = this.buildPythonEnvironment();
+    const env = { ...this.buildPythonEnvironment() };
     const acceleration = this.databaseManager
       ? this.databaseManager.getSetting("asr_acceleration", "auto")
       : "auto";
