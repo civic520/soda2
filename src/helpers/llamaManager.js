@@ -239,16 +239,6 @@ class LlamaManager {
         if (progressCallback) {
           progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: pct });
         }
-      }).catch(async (err) => {
-        this.logger.warn && this.logger.warn(`模型下載失敗，重試官方來源: ${err.message}`);
-        const fallback = config.url.replace("voconly/Qwen3-ASR-1.7B-gguf", "foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF");
-        await this.downloadFile(fallback, dest, (p) => {
-          const currentOverall = overallDownloaded + p.downloaded;
-          const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
-          if (progressCallback) {
-            progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: pct });
-          }
-        });
       });
       const postSize = this._getExistingFileSize(dest);
       if (postSize === 0) {
