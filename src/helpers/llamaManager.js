@@ -585,6 +585,23 @@ class LlamaManager {
     }
   }
 
+  // 清理 Qwen3-ASR 的輸出標記：模型會回傳 `language Chinese<asr_text>...` 之類的前綴，
+  // 以及可能的 `<|endofasr|>` 尾綴。只保留實際轉錄文字。
+  _cleanAsrText(rawText) {
+    if (!rawText) return "";
+    let text = rawText.trim();
+    const asrIdx = text.indexOf("<asr_text>");
+    if (asrIdx !== -1) {
+      text = text.slice(asrIdx + "<asr_text>".length);
+    }
+    const endIdx = text.indexOf("<|endofasr|>");
+    if (endIdx !== -1) {
+      text = text.slice(0, endIdx);
+    }
+    text = text.replace(/<\|endoftext\|>/g, "").trim();
+    return text;
+  }
+
   async transcribeAudio(audioBlob, options = {}) {
     try {
       if (!this.serverReady) {
@@ -627,6 +644,8 @@ class LlamaManager {
       } else {
         throw new Error(`llama-server 轉錄失敗 HTTP ${response.status}: ${response.body.slice(0, 200)}`);
       }
+
+      text = this._cleanAsrText(text);
 
       let audio_path = null;
       const saveAudioFiles = this.databaseManager

@@ -339,3 +339,21 @@ test("checkModelFiles treats partial download as missing", async () => {
   assert.equal(result.models_downloaded, false);
   assert.deepEqual(result.details.missing_files, ["Qwen3-ASR-1.7B-Q4_K_M.gguf", "mmproj-Qwen3-ASR-1.7B-Q4_K_M.gguf"]);
 });
+
+test("cleanAsrText strips language prefix and asr_text markers", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-clean-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  assert.equal(
+    manager._cleanAsrText("language Chinese<asr_text>大家好，這是測試。"),
+    "大家好，這是測試。"
+  );
+  assert.equal(
+    manager._cleanAsrText("language Chinese<asr_text>hello world<|endofasr|>"),
+    "hello world"
+  );
+  assert.equal(
+    manager._cleanAsrText("no markers here"),
+    "no markers here"
+  );
+  assert.equal(manager._cleanAsrText(""), "");
+});
