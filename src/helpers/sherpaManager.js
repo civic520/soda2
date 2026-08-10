@@ -1597,6 +1597,9 @@ class SherpaManager {
         session_id: sessionId,
         options: {
           sample_rate: options.sampleRate || 16000,
+          convert_ordinal_numbers: this.databaseManager
+            ? this.databaseManager.getSetting("convert_ordinal_numbers", false)
+            : false,
         },
       });
 
