@@ -668,10 +668,11 @@ class LlamaManager {
     }
     // 類別 2：一、二、三 列表
     const listItems = [...text.matchAll(/([一二三四五六七八九十])[、，,；;]/g)];
-    if (listItems.length >= 2) {
+    const validItems = listItems.filter((m) => cnNum[m[1]]);
+    if (validItems.length >= 2) {
       let out = text;
       const seps = ["、", "，", ",", "；", ";"];
-      for (const m of listItems) {
+      for (const m of validItems) {
         const c = m[1];
         const n = cnNum[c];
         if (n) {
