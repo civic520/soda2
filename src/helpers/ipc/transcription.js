@@ -2,6 +2,10 @@ const { ipcMain } = require("electron");
 const { runVoiceCommand } = require("../commandMode");
 const recovery = require("../recovery");
 
+function isGgufModel(ctx) {
+  return (ctx.databaseManager ? ctx.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer") === "qwen3_asr_gguf";
+}
+
 module.exports = function register(ctx) {
   // 打開「記下來」的筆記檔（用系統預設程式）
   ipcMain.handle("open-notes", async () => {
@@ -100,23 +104,38 @@ module.exports = function register(ctx) {
 
   // 模型文件管理
   ipcMain.handle("check-model-files", async () => {
-    console.log("[IPC] check-model-files 被調用");
-    const result = await ctx.sherpaManager.checkModelFiles();
-    // 同時返回服務器狀態，避免前端需要額外調用
-    const serverStatus = {
-      server_ready: ctx.sherpaManager.serverReady,
-      models_initialized: ctx.sherpaManager.modelsInitialized,
-      server_process_running: ctx.sherpaManager.serverProcess !== null
-    };
-    console.log("[IPC] check-model-files 返回:", JSON.stringify({...result, ...serverStatus}));
+    const result = isGgufModel(ctx)
+      ? await ctx.llamaManager.checkModelFiles()
+      : await ctx.sherpaManager.checkModelFiles();
+    const serverStatus = isGgufModel(ctx)
+      ? {
+          server_ready: ctx.llamaManager.serverReady,
+          models_initialized: ctx.llamaManager.serverReady,
+          server_process_running: ctx.llamaManager.serverProcess !== null,
+        }
+      : {
+          server_ready: ctx.sherpaManager.serverReady,
+          models_initialized: ctx.sherpaManager.modelsInitialized,
+          server_process_running: ctx.sherpaManager.serverProcess !== null,
+        };
     return { ...result, ...serverStatus };
   });
 
   ipcMain.handle("get-download-progress", async () => {
-    return await ctx.sherpaManager.getDownloadProgress();
+    return isGgufModel(ctx)
+      ? await ctx.llamaManager.getDownloadProgress()
+      : await ctx.sherpaManager.getDownloadProgress();
   });
 
   ipcMain.handle("download-models", async (event) => {
+    if (isGgufModel(ctx)) {
+      await ctx.llamaManager.ensureLlamaBinary((progress) => {
+        event.sender.send("model-download-progress", { stage: "downloading-binary", model: "asr", progress: progress.progress, overall_progress: Math.round(progress.progress / 2) });
+      });
+      return await ctx.llamaManager.ensureModelAvailable((progress) => {
+        event.sender.send("model-download-progress", progress);
+      });
+    }
     return await ctx.sherpaManager.downloadModels((progress) => {
       event.sender.send("model-download-progress", progress);
     });
@@ -124,9 +143,9 @@ module.exports = function register(ctx) {
 
   // 音频转录相关
   ipcMain.handle("transcribe-audio", async (event, audioData, options) => {
-    // 錄音的持久化由 sherpaManager.transcribeAudio 負責（persistAudioFile，
-    // 回傳 audio_path）。這裡不再另存一份 — 之前重複存檔導致每段錄音
-    // 落地兩份 WAV，且此處覆蓋 audio_path 讓另一份變成孤兒檔。
+    if (isGgufModel(ctx)) {
+      return await ctx.llamaManager.transcribeAudio(audioData, options);
+    }
     return await ctx.sherpaManager.transcribeAudio(audioData, options);
   });
 
@@ -354,6 +373,9 @@ module.exports = function register(ctx) {
   });
 
   ipcMain.handle("check-model-exists", async (event, modelType, customPath) => {
+    if (modelType === "qwen3_asr_gguf") {
+      return await ctx.llamaManager.checkModelFiles();
+    }
     return await ctx.sherpaManager.checkModelFiles(modelType, customPath);
   });
 
@@ -364,6 +386,9 @@ module.exports = function register(ctx) {
   });
 
   ipcMain.handle("delete-model-files", async (event, modelType, customPath) => {
+    if (modelType === "qwen3_asr_gguf") {
+      return await ctx.llamaManager.deleteModelFiles();
+    }
     return await ctx.sherpaManager.deleteModelFiles(modelType, customPath);
   });
 
@@ -408,19 +433,9 @@ module.exports = function register(ctx) {
   });
 
   ipcMain.handle("restart-sherpa-server", async () => {
-    try {
-      ctx.logger && ctx.logger.info && ctx.logger.info('手动重启Sherpa服务器');
-
-      // 使用新的restartServer方法
-      const result = await ctx.sherpaManager.restartServer();
-
-      return result;
-    } catch (error) {
-      ctx.logger && ctx.logger.error && ctx.logger.error('重启Sherpa服务器失败', error);
-      return {
-        success: false,
-        error: error.message
-      };
+    if (isGgufModel(ctx)) {
+      return await ctx.llamaManager.restartServer();
     }
+    return await ctx.sherpaManager.restartServer();
   });
 };

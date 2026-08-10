@@ -142,6 +142,7 @@ const environmentManager = new EnvironmentManager();
 const databaseManager = new DatabaseManager();
 const clipboardManager = new ClipboardManager(logger); // 传递logger实例
 const sherpaManager = new SherpaManager(logger); // 传递logger实例
+const LlamaManager = require("./src/helpers/llamaManager");
 const hotkeyManager = new HotkeyManager(logger);
 const typelessManager = new TypelessManager(logger);
 
@@ -151,6 +152,8 @@ databaseManager.initialize(dataDirectory);
 
 // 連結資料庫設定至模型管理器，並建立預設模型根目錄
 sherpaManager.setDatabaseManager(databaseManager);
+const llamaManager = new LlamaManager(logger);
+llamaManager.setDatabaseManager(databaseManager);
 
 // 若當前模型是 whisper 但檔案不完整則降級到 sense_voice
 const currentModel = databaseManager.getSetting('asr_model_type', 'paraformer');
@@ -222,6 +225,7 @@ async function startApp() {
       databaseManager,
       clipboardManager,
       sherpaManager,
+      llamaManager,
       windowManager,
       hotkeyManager,
       typelessManager,
@@ -272,6 +276,13 @@ async function startApp() {
   sherpaManager.initializeAtStartup().catch((err) => {
     logger.warn("Sherpa 在启动时不可用，这不是关键问题", err);
   });
+
+  // 若當前模型是 GGUF，啟動時同步初始化 llama-server（失敗不阻擋應用）
+  if (databaseManager.getSetting("asr_model_type", "paraformer") === "qwen3_asr_gguf") {
+    llamaManager.startServer().catch((err) => {
+      logger.warn("llama-server 啟動失敗（不阻擋應用）:", err && err.message);
+    });
+  }
 
   // 保留策略（建議 1）：開機清掉超過保留天數的舊錄音，避免無限增長 + 減少 SSD 寫入。
   try {

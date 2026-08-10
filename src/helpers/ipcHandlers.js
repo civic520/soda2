@@ -6,6 +6,7 @@ class IPCHandlers {
     this.databaseManager = managers.databaseManager;
     this.clipboardManager = managers.clipboardManager;
     this.sherpaManager = managers.sherpaManager;
+    this.llamaManager = managers.llamaManager;
     this.windowManager = managers.windowManager;
     this.hotkeyManager = managers.hotkeyManager;
     this.typelessManager = managers.typelessManager;
