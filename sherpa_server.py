@@ -1095,6 +1095,9 @@ class SherpaServer:
                 return init_result
 
         try:
+            options = options or {}
+            # 中文序數轉阿拉伯數字（預設關，依使用者設定帶入）
+            set_ordinal_conversion_enabled(options.get("convert_ordinal_numbers", False))
             # 創建新的串流
             stream = self.streaming_recognizer.create_stream()
             self.streaming_sessions[session_id] = {
@@ -1292,7 +1295,7 @@ class SherpaServer:
             return {
                 "success": True,
                 "session_id": session_id,
-                "final_text": apply_emoji(to_traditional(strip_short_trailing_period(localize_english_punct(format_lists(apply_punct_rules(clean_transcript(text_with_punc))))))),
+                "final_text": apply_emoji(to_traditional(strip_short_trailing_period(localize_english_punct(convert_ordinals(format_lists(apply_punct_rules(clean_transcript(text_with_punc)))))))),
                 "raw_text": to_traditional(raw_text),
                 "duration": round(duration, 2),
                 "process_time": round(elapsed, 2),

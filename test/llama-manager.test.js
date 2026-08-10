@@ -364,12 +364,15 @@ test("_convertOrdinals converts dianX sequences", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord-"));
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(manager._convertOrdinals("一點一，一點二，一點三"), "1.1 1.2 1.3");
+  assert.equal(manager._convertOrdinals("一點一，一點二"), "1.1 1.2");
 });
 
 test("_convertOrdinals converts comma list", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord2-"));
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
-  assert.equal(manager._convertOrdinals("一、開心；二、難過；三、高興。"), "1.開心 2.難過 3.高興。");
+  assert.equal(manager._convertOrdinals("一、開心；二、難過；三、高興。"), "1. 開心 2. 難過 3. 高興。");
+  assert.equal(manager._convertOrdinals("一、二、三"), "1. 2. 3.");
+  assert.equal(manager._convertOrdinals("一、二、三、四"), "1. 2. 3. 4.");
 });
 
 test("_convertOrdinals leaves non-list text unchanged", () => {
@@ -379,6 +382,8 @@ test("_convertOrdinals leaves non-list text unchanged", () => {
   assert.equal(manager._convertOrdinals("第一"), "第一");
   assert.equal(manager._convertOrdinals("一月"), "一月");
   assert.equal(manager._convertOrdinals("十、十一、十二"), "十、十一、十二");
+  assert.equal(manager._convertOrdinals("第一、第二、第三"), "第一、第二、第三");
+  assert.equal(manager._convertOrdinals("星期一、二、三"), "星期一、二、三");
 });
 
 test("startServer adds -ngl when acceleration resolves ngl true", async () => {

@@ -279,9 +279,11 @@ module.exports = function register(ctx) {
       if (!fs.existsSync(record.audio_path)) {
         return { success: false, error: "錄音檔已不存在" };
       }
+      const ordinalSetting = ctx.databaseManager ? ctx.databaseManager.getSetting("convert_ordinal_numbers", false) : false;
+      const opts = { ...options, convert_ordinal_numbers: ordinalSetting };
       const result = isGgufModel(ctx)
-        ? await ctx.llamaManager.transcribeFilePath(record.audio_path, options)
-        : await ctx.sherpaManager.transcribeFilePath(record.audio_path, options);
+        ? await ctx.llamaManager.transcribeFilePath(record.audio_path, opts)
+        : await ctx.sherpaManager.transcribeFilePath(record.audio_path, opts);
       if (!result || !result.success) {
         return { success: false, error: result?.error || "辨識失敗" };
       }

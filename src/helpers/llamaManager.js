@@ -667,24 +667,38 @@ class LlamaManager {
       return out.replace(/(?<=1\.[0-9])[，,、；;]+(?=1\.[0-9])/g, " ");
     }
     // 類別 2：一、二、三 列表
-    const listItems = [...text.matchAll(/([一二三四五六七八九十])[、，,；;]/g)];
-    const validItems = listItems.filter((m) => cnNum[m[1]]);
-    if (validItems.length >= 2) {
-      let out = text;
-      const seps = ["、", "，", ",", "；", ";"];
-      for (const m of validItems) {
-        const c = m[1];
-        const n = cnNum[c];
-        if (n) {
-          for (const sep of seps) {
-            if (out.includes(c + sep)) {
-              out = out.replace(c + sep, n + ".", 1);
-              break;
-            }
-          }
+    const inWord = (start) => {
+      const before1 = text.slice(Math.max(0, start - 1), start);
+      const before2 = text.slice(Math.max(0, start - 2), start);
+      return (before1 && "第星期週".includes(before1)) || before2 === "星期";
+    };
+    const itemMs = [...text.matchAll(/([一二三四五六七八九十])[、，,；;]/g)].filter(
+      (m) => !inWord(m.index)
+    );
+    if (itemMs.length >= 2) {
+      const lastEnd = itemMs[itemMs.length - 1].index + itemMs[itemMs.length - 1][0].length;
+      const tailSlice = text.slice(lastEnd);
+      const tailM = tailSlice.match(/^\s*([一二三四五六七八九十])\s*[。！？!?]?\s*$/);
+      let tail = null;
+      if (tailM) {
+        const tStart = lastEnd + tailM.index + tailM[0].indexOf(tailM[1]);
+        if (!inWord(tStart)) {
+          tail = [tStart, tailM[1]];
         }
       }
-      return out.replace(/(?<=[\p{L}\p{N}。！？])[，,、；;]+(?=[0-9]\.)/gu, " ");
+      const starts = itemMs.map((m) => [m.index, m[1]]);
+      if (tail) starts.push(tail);
+      if (starts.filter(([, c]) => cnNum[c]).length < 2) return text;
+      const regionEnd = tail ? tail[0] + 1 : lastEnd;
+      const chars = [...text];
+      for (let i = itemMs[0].index; i < regionEnd; i++) {
+        if ("、，,；;".includes(chars[i])) chars[i] = " ";
+      }
+      for (const [i, c] of starts) {
+        const n = cnNum[c];
+        if (n) chars[i] = n + ".";
+      }
+      return chars.join("").replace(/ +/g, " ").trim();
     }
     return text;
   }
