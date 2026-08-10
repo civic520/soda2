@@ -57,6 +57,226 @@ class LlamaManager {
     const exe = this.platform === "win32" ? "llama-server.exe" : "llama-server";
     return path.join(this.getBinaryDir(), exe);
   }
+
+  downloadFile(url, destPath, progressCallback = null) {
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(destPath);
+      const request = this.httpsGet(url, (response) => {
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          file.close();
+          fs.promises.unlink(destPath).catch(() => {});
+          const location = response.headers.location;
+          const next = location.startsWith("http") ? location : new URL(location, url).href;
+          this.downloadFile(next, destPath, progressCallback).then(resolve, reject);
+          return;
+        }
+        if (response.statusCode !== 200) {
+          file.close();
+          fs.promises.unlink(destPath).catch(() => {});
+          reject(new Error(`Download failed with HTTP ${response.statusCode}`));
+          return;
+        }
+        const total = Number(response.headers["content-length"] || 0);
+        let downloaded = 0;
+        response.on("data", (chunk) => {
+          downloaded += chunk.length;
+          if (progressCallback && total > 0) {
+            progressCallback({ downloaded, total, progress: Math.round((downloaded / total) * 1000) / 10 });
+          }
+        });
+        response.pipe(file);
+        file.on("finish", () => file.close(resolve));
+      });
+      request.on("error", (error) => {
+        file.close();
+        fs.promises.unlink(destPath).catch(() => {});
+        reject(error);
+      });
+      file.on("error", (error) => {
+        request.destroy();
+        reject(error);
+      });
+    });
+  }
+
+  extractZip(zipPath, targetDir) {
+    return new Promise((resolve, reject) => {
+      if (this.platform === "win32") {
+        const { execFile } = require("child_process");
+        execFile("powershell", ["-NoProfile", "-Command", `Expand-Archive -Path '${zipPath}' -DestinationPath '${targetDir}' -Force`], { windowsHide: true }, (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      } else {
+        const { execFile } = require("child_process");
+        execFile("unzip", ["-o", zipPath, "-d", targetDir], { windowsHide: true }, (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      }
+    });
+  }
+
+  _forceDeletePath(filePath) {
+    try { fs.unlinkSync(filePath); return; } catch (e) { /* continue */ }
+    try { fs.chmodSync(filePath, 0o777); fs.unlinkSync(filePath); return; } catch (e) { /* continue */ }
+    if (this.platform === "win32") {
+      try {
+        const { execSync } = require("child_process");
+        execSync(`attrib -R "${filePath}" & del /F /Q /A "${filePath}"`, { windowsHide: true, stdio: "ignore" });
+      } catch (e) { /* give up */ }
+    }
+  }
+
+  _getExistingFileSize(filePath) {
+    try {
+      const st = fs.statSync(filePath);
+      return st.size > 0 ? st.size : 0;
+    } catch (e) {
+      this._forceDeletePath(filePath);
+      return 0;
+    }
+  }
+
+  async ensureLlamaBinary(progressCallback = null) {
+    const binPath = this.getLlamaServerPath();
+    if (fs.existsSync(binPath)) {
+      return { success: true, binaryPath: binPath, already_downloaded: true };
+    }
+    const config = this.getModelConfig();
+    const zipPath = path.join(this.getBinaryDir(), config.binary_filename);
+    await fs.promises.mkdir(this.getBinaryDir(), { recursive: true });
+    await this.downloadFile(config.binary_url, zipPath, (p) => {
+      if (progressCallback) progressCallback({ stage: "downloading-binary", model: "asr", progress: p.progress, overall_progress: Math.round(p.progress / 2) });
+    });
+    await this.extractZip(zipPath, this.getBinaryDir());
+    this._forceDeletePath(zipPath);
+    if (!fs.existsSync(binPath)) {
+      throw new Error("llama.cpp 二進位解壓後未找到 llama-server");
+    }
+    return { success: true, binaryPath: binPath };
+  }
+
+  async ensureModelAvailable(progressCallback = null) {
+    const status = await this.checkModelFiles();
+    if (status.models_downloaded) {
+      return { success: true, already_downloaded: true, model_path: status.details.model_path };
+    }
+    const config = this.getModelConfig();
+    const targetDir = this.getModelCachePath();
+    if (fs.existsSync(targetDir)) {
+      fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    let overallTotal = config.expected_size;
+    let overallDownloaded = 0;
+    const files = [];
+    for (const f of config.required_files) files.push(f);
+    if (config.mmproj_url) files.push(path.basename(config.mmproj_url));
+    for (const filename of files) {
+      const dest = path.join(targetDir, filename);
+      const existing = this._getExistingFileSize(dest);
+      if (existing > 0) {
+        overallDownloaded += existing;
+        continue;
+      }
+      const url = filename.startsWith("mmproj")
+        ? config.mmproj_url
+        : config.url;
+      if (progressCallback) {
+        progressCallback({ stage: "downloading", model: "asr", progress: 0, overall_progress: 0 });
+      }
+      await this.downloadFile(url, dest, (p) => {
+        const currentOverall = overallDownloaded + p.downloaded;
+        const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
+        if (progressCallback) {
+          progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: pct });
+        }
+      }).catch(async (err) => {
+        this.logger.warn && this.logger.warn(`模型下載失敗，重試官方來源: ${err.message}`);
+        const fallback = config.url.replace("voconly/Qwen3-ASR-1.7B-gguf", "foryoung365/Qwen3-ASR-1.7B-Q4_K_M-GGUF");
+        await this.downloadFile(fallback, dest, (p) => {
+          const currentOverall = overallDownloaded + p.downloaded;
+          const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
+          if (progressCallback) {
+            progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: pct });
+          }
+        });
+      });
+      const postSize = this._getExistingFileSize(dest);
+      if (postSize === 0) {
+        this._forceDeletePath(dest);
+        throw new Error(`下載的模型檔案為空（0 bytes）`);
+      }
+      overallDownloaded += postSize;
+    }
+    if (progressCallback) {
+      progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 100 });
+    }
+    return { success: true, model_path: targetDir };
+  }
+
+  async checkModelFiles() {
+    try {
+      const modelPath = this.getModelCachePath();
+      if (!fs.existsSync(modelPath)) {
+        return {
+          success: true,
+          models_downloaded: false,
+          missing_models: ["asr"],
+          directory_exists: false,
+          details: { model_path: modelPath, missing_files: [] },
+        };
+      }
+      const config = this.getModelConfig();
+      const missingFiles = [];
+      for (const f of config.required_files) {
+        if (this._getExistingFileSize(path.join(modelPath, f)) <= 0) missingFiles.push(f);
+      }
+      if (config.mmproj_url) {
+        const m = path.basename(config.mmproj_url);
+        if (this._getExistingFileSize(path.join(modelPath, m)) <= 0) missingFiles.push(m);
+      }
+      const allDownloaded = missingFiles.length === 0;
+      return {
+        success: true,
+        models_downloaded: allDownloaded,
+        missing_models: allDownloaded ? [] : ["asr"],
+        directory_exists: true,
+        details: { model_path: modelPath, missing_files: missingFiles },
+      };
+    } catch (error) {
+      return { success: false, error: error.message, models_downloaded: false, missing_models: ["asr"], details: {} };
+    }
+  }
+
+  async getDownloadProgress() {
+    try {
+      const config = this.getModelConfig();
+      const modelPath = this.getModelCachePath();
+      if (!fs.existsSync(modelPath)) {
+        return { success: true, overall_progress: 0, models: { asr: { progress: 0, downloaded: 0, total: config.expected_size } } };
+      }
+      const mainFile = config.required_files[0];
+      const fileSize = this._getExistingFileSize(path.join(modelPath, mainFile));
+      const progress = Math.min(100, (fileSize / config.expected_size) * 100);
+      return {
+        success: true,
+        overall_progress: Math.round(progress * 10) / 10,
+        models: { asr: { progress: Math.round(progress * 10) / 10, downloaded: fileSize, total: config.expected_size } },
+      };
+    } catch (error) {
+      return { success: false, error: error.message, overall_progress: 0, models: {} };
+    }
+  }
+
+  async deleteModelFiles() {
+    const targetDir = this.getModelCachePath();
+    if (fs.existsSync(targetDir)) {
+      fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+    return { success: true };
+  }
 }
 
 module.exports = LlamaManager;
