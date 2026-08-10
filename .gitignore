@@ -192,3 +192,6 @@ docs/superpowers/
 
 # 內建提示詞參考文件（不入庫）
 提示詞.md
+
+# SDD scratch workspace (subagent working files)
+.superpowers/
