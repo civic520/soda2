@@ -115,6 +115,21 @@ class SherpaManager {
   getEmbeddedPythonPath() { return this.pythonResolver.getEmbeddedPythonPath(); }
   setupIsolatedEnvironment() { return this.pythonResolver.setupIsolatedEnvironment(); }
   buildPythonEnvironment() { return this.pythonResolver.buildPythonEnvironment(); }
+
+  async buildAccelerationEnv(detector = null) {
+    const env = this.buildPythonEnvironment();
+    const acceleration = this.databaseManager
+      ? this.databaseManager.getSetting("asr_acceleration", "auto")
+      : "auto";
+    const det = detector || this.accelerationDetector || (this.accelerationDetector = new (require("./acceleration"))());
+    const resolved = await det.resolveForEngine("sherpa", acceleration);
+    env.SHERPA_PROVIDER = resolved.provider || "cpu";
+    if (resolved.warning) {
+      this.logger.warn && this.logger.warn(resolved.warning);
+    }
+    this.logger.info && this.logger.info("Sherpa 加速模式", { acceleration, provider: env.SHERPA_PROVIDER });
+    return env;
+  }
   findPythonExecutable() { return this.pythonResolver.findPythonExecutable(); }
 
   getModelCachePath(modelType = null, customPath = null) {
@@ -1013,7 +1028,7 @@ class SherpaManager {
       }
 
       this.setupIsolatedEnvironment();
-      const pythonEnv = this.buildPythonEnvironment();
+      const pythonEnv = await this.buildAccelerationEnv();
 
       return new Promise((resolve) => {
         const modelType = this.databaseManager ? this.databaseManager.getSetting("asr_model_type", "paraformer") : "paraformer";
