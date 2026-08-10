@@ -379,20 +379,33 @@ class LlamaManager {
     await this.downloadFile(ffmpegUrl, zipPath);
     await this.extractZip(zipPath, path.join(this.getBinaryDir(), "ffmpeg"));
     this._forceDeletePath(zipPath);
-    const probe = path.join(this.getBinaryDir(), "ffmpeg", "bin", "ffprobe.exe");
+    const ffmpegRoot = path.join(this.getBinaryDir(), "ffmpeg");
+    const binDir = path.join(ffmpegRoot, "bin");
+    const probe = path.join(binDir, "ffprobe.exe");
     if (!fs.existsSync(probe)) {
       // 有些 build 解壓結構是 ffmpeg-x.x-full_build/bin/ffprobe.exe
-      const subdir = fs.readdirSync(path.join(this.getBinaryDir(), "ffmpeg"))[0];
-      const nested = path.join(this.getBinaryDir(), "ffmpeg", subdir, "bin", "ffprobe.exe");
-      if (fs.existsSync(nested)) {
-        await fs.promises.mkdir(path.join(this.getBinaryDir(), "ffmpeg", "bin"), { recursive: true });
-        for (const f of ["ffprobe.exe", "ffmpeg.exe"]) {
-          const src = path.join(this.getBinaryDir(), "ffmpeg", subdir, "bin", f);
-          if (fs.existsSync(src)) await fs.promises.copyFile(src, path.join(this.getBinaryDir(), "ffmpeg", "bin", f));
+      let entries;
+      try {
+        entries = fs.readdirSync(ffmpegRoot);
+      } catch (e) {
+        entries = [];
+      }
+      const subdir = entries[0];
+      if (subdir) {
+        const nested = path.join(ffmpegRoot, subdir, "bin", "ffprobe.exe");
+        if (fs.existsSync(nested)) {
+          await fs.promises.mkdir(binDir, { recursive: true });
+          for (const f of ["ffprobe.exe", "ffmpeg.exe"]) {
+            const src = path.join(ffmpegRoot, subdir, "bin", f);
+            if (fs.existsSync(src)) await fs.promises.copyFile(src, path.join(binDir, f));
+          }
         }
       }
     }
-    return { success: true, ffmpegDir: path.join(this.getBinaryDir(), "ffmpeg", "bin") };
+    if (!fs.existsSync(path.join(binDir, "ffprobe.exe"))) {
+      return { success: false, error: "下載 FFmpeg 後仍找不到 ffprobe.exe" };
+    }
+    return { success: true, ffmpegDir: binDir };
   }
 
   async startServer() {
@@ -486,9 +499,6 @@ class LlamaManager {
   }
 
   async transcribeAudio(audioBlob, options = {}) {
-    const tempPath = path.join(os.tmpdir(), `llama_asr_${Date.now()}_${Math.random().toString(36).slice(2)}.wav`);
-    await fs.promises.writeFile(tempPath, Buffer.from(audioBlob));
-
     try {
       if (!this.serverReady) {
         await this.startServer();
@@ -543,8 +553,6 @@ class LlamaManager {
       };
     } catch (error) {
       throw error;
-    } finally {
-      fs.promises.unlink(tempPath).catch(() => {});
     }
   }
 }
