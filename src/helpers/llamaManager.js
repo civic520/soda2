@@ -652,6 +652,42 @@ class LlamaManager {
     return text;
   }
 
+  _convertOrdinals(text) {
+    if (!text) return text;
+    const cnNum = { "零": "0", "一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7", "八": "8", "九": "9" };
+    // 類別 1：一點X 連續編號
+    const dianMatches = [...text.matchAll(/一點([零一二三四五六七八九])/g)];
+    if (dianMatches.length >= 2) {
+      let out = text;
+      for (let i = dianMatches.length - 1; i >= 0; i--) {
+        const m = dianMatches[i];
+        const n = cnNum[m[1]];
+        out = out.slice(0, m.index) + "1." + n + out.slice(m.index + m[0].length);
+      }
+      return out.replace(/(?<=1\.[0-9])[，,、；;]+(?=1\.[0-9])/g, " ");
+    }
+    // 類別 2：一、二、三 列表
+    const listItems = [...text.matchAll(/([一二三四五六七八九十])[、，,；;]/g)];
+    if (listItems.length >= 2) {
+      let out = text;
+      const seps = ["、", "，", ",", "；", ";"];
+      for (const m of listItems) {
+        const c = m[1];
+        const n = cnNum[c];
+        if (n) {
+          for (const sep of seps) {
+            if (out.includes(c + sep)) {
+              out = out.replace(c + sep, n + ".", 1);
+              break;
+            }
+          }
+        }
+      }
+      return out.replace(/(?<=[\p{L}\p{N}。！？])[，,、；;]+(?=[0-9]\.)/gu, " ");
+    }
+    return text;
+  }
+
   async transcribeAudio(audioBlob, options = {}) {
     try {
       if (!this.serverReady) {
@@ -696,6 +732,14 @@ class LlamaManager {
       }
 
       text = this._cleanAsrText(text);
+
+      // 中文序數轉阿拉伯數字（依設定，預設關）
+      const convertOrdinalsEnabled = this.databaseManager
+        ? this.databaseManager.getSetting("convert_ordinal_numbers", false)
+        : false;
+      if (convertOrdinalsEnabled) {
+        text = this._convertOrdinals(text);
+      }
 
       let audio_path = null;
       const saveAudioFiles = this.databaseManager

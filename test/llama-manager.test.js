@@ -360,6 +360,26 @@ test("cleanAsrText strips language prefix and asr_text markers", () => {
   assert.equal(manager._cleanAsrText(""), "");
 });
 
+test("_convertOrdinals converts dianX sequences", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  assert.equal(manager._convertOrdinals("一點一，一點二，一點三"), "1.1 1.2 1.3");
+});
+
+test("_convertOrdinals converts comma list", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord2-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  assert.equal(manager._convertOrdinals("一、開心；二、難過；三、高興。"), "1.開心 2.難過 3.高興。");
+});
+
+test("_convertOrdinals leaves non-list text unchanged", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord3-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  assert.equal(manager._convertOrdinals("好一點"), "好一點");
+  assert.equal(manager._convertOrdinals("第一"), "第一");
+  assert.equal(manager._convertOrdinals("一月"), "一月");
+});
+
 test("startServer adds -ngl when acceleration resolves ngl true", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ngl-"));
   let spawnedArgs = null;
