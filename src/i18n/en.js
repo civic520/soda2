@@ -58,6 +58,8 @@ export default {
     typelessTriggerAltRight: 'Right Alt',
     autoFormatLists: 'Auto bullet list',
     autoFormatListsDesc: 'Turn spoken "first… second… third…" into a 1. 2. 3. list. Off by default (prone to false triggers).',
+    convertOrdinalNumbers: 'Convert Chinese Ordinals',
+    convertOrdinalNumbersDesc: 'Turn spoken "1.1, 1.2" or "1. 2. 3." ordinal lists (said in Chinese) into Arabic numbers. Off by default.',
     autoLineBreak: 'Auto line break on pause',
     autoLineBreakDesc: 'Insert a line break after a longer pause. Off by default (thinking pauses won\'t split your text).',
     asrProfile: 'Performance mode',

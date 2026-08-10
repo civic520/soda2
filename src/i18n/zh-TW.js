@@ -58,6 +58,8 @@ export default {
     typelessTriggerAltRight: '右 Alt',
     autoFormatLists: '自動列點',
     autoFormatListsDesc: '講「第一、第二、第三…」時自動轉成 1. 2. 3. 清單。預設關閉（容易誤判分點）。',
+    convertOrdinalNumbers: '中文序數轉數字',
+    convertOrdinalNumbersDesc: '講「一點一、一點二」或「一、二、三」時自動轉成 1.1、1.2 或 1. 2. 3. 格式。預設關閉。',
     autoLineBreak: '依停頓自動分行',
     autoLineBreakDesc: '講話停頓較久時自動換行。預設關閉（中途想一下不會被誤斷成多行）。',
     asrProfile: '效能模式',
