@@ -67,6 +67,12 @@ export default {
     asrProfileStandard: '标准（最准）',
     asrProfileFast: '快速（弱电脑）',
     asrProfileChanged: '性能模式已切换，下次识别生效',
+    asrAcceleration: '加速模式',
+    asrAccelerationDesc: '选择语音识别引擎的加速方式。自动模式会根据 GPU 是否存在自动选择。',
+    asrAccelerationAuto: '自动（推荐）',
+    asrAccelerationCpu: '使用 CPU 加速',
+    asrAccelerationGpu: '使用 GPU 加速',
+    asrAccelerationChanged: '加速模式已切换，正在重启引擎',
     convertTranscription: '转换识别结果',
     convertTranscriptionDesc: '将语音识别结果转换为当前语言',
 

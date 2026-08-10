@@ -67,6 +67,12 @@ export default {
     asrProfileStandard: 'Standard (most accurate)',
     asrProfileFast: 'Fast (older machines)',
     asrProfileChanged: 'Performance mode changed, applies to the next recognition',
+    asrAcceleration: 'Acceleration Mode',
+    asrAccelerationDesc: 'Choose how the speech recognition engine accelerates. Auto mode selects based on GPU availability.',
+    asrAccelerationAuto: 'Auto (recommended)',
+    asrAccelerationCpu: 'CPU',
+    asrAccelerationGpu: 'GPU',
+    asrAccelerationChanged: 'Acceleration mode changed, restarting engine',
     convertTranscription: 'Convert Transcription',
     convertTranscriptionDesc: 'Convert speech recognition results to the current language',
 

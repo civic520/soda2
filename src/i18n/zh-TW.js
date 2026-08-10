@@ -67,6 +67,12 @@ export default {
     asrProfileStandard: '標準（最準）',
     asrProfileFast: '快速（弱電腦）',
     asrProfileChanged: '效能模式已切換，下次辨識生效',
+    asrAcceleration: '加速模式',
+    asrAccelerationDesc: '選擇語音辨識引擎的加速方式。自動模式會依 GPU 是否存在自動選擇。',
+    asrAccelerationAuto: '自動（推薦）',
+    asrAccelerationCpu: '使用 CPU 加速',
+    asrAccelerationGpu: '使用 GPU 加速',
+    asrAccelerationChanged: '加速模式已切換，正在重啟引擎',
     convertTranscription: '轉換辨識結果',
     convertTranscriptionDesc: '將語音辨識結果轉換為當前語言',
 

@@ -96,6 +96,7 @@ const SettingsPage = () => {
     language: "zh-TW",
     convert_transcription: true,
     asr_profile: "standard",          // 效能模式：standard（最準）/ fast（弱 CPU）
+    asr_acceleration: "auto",           // 加速模式：auto（自動）/ cpu / gpu
     mic_device_id: "",                // 指定麥克風（空=系統預設）
     mic_auto_gain: true,              // 自動增益（AGC）
     typeless_trigger: "default",      // 錄音觸發鍵（issue #12：可自訂避開衝突）
@@ -571,6 +572,7 @@ const SettingsPage = () => {
           language: allSettings.language || "zh-TW",
           convert_transcription: allSettings.convert_transcription !== false,
           asr_profile: allSettings.asr_profile || "standard",
+          asr_acceleration: allSettings.asr_acceleration || "auto",
           mic_device_id: allSettings.mic_device_id || "",
           mic_auto_gain: allSettings.mic_auto_gain !== false,
           typeless_trigger: allSettings.typeless_trigger || "default",
@@ -1337,6 +1339,38 @@ const SettingsPage = () => {
                   >
                     <option value="standard">{t('settings.asrProfileStandard')}</option>
                     <option value="fast">{t('settings.asrProfileFast')}</option>
+                  </select>
+                </div>
+
+                {/* 加速模式：自動 / CPU / GPU */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {t('settings.asrAcceleration')}
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {t('settings.asrAccelerationDesc')}
+                    </p>
+                  </div>
+                  <select
+                    value={settings.asr_acceleration || 'auto'}
+                    onChange={async (e) => {
+                      const v = e.target.value;
+                      handleInputChange('asr_acceleration', v);
+                      if (window.electronAPI) {
+                        await window.electronAPI.setSetting('asr_acceleration', v);
+                      }
+                      toast.success(t('settings.asrAccelerationChanged'));
+                      // 加速模式變更需要重啟引擎才生效
+                      if (window.electronAPI && window.electronAPI.restartSherpaServer) {
+                        await window.electronAPI.restartSherpaServer();
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="auto">{t('settings.asrAccelerationAuto')}</option>
+                    <option value="cpu">{t('settings.asrAccelerationCpu')}</option>
+                    <option value="gpu">{t('settings.asrAccelerationGpu')}</option>
                   </select>
                 </div>
 
