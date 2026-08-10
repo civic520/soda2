@@ -607,7 +607,8 @@ export default function App() {
           sense_voice: "SenseVoice 多語言",
           whisper: "Whisper 中英",
           qwen3_asr: "Qwen3-ASR 阿里",
-          breeze_asr_25: "Breeze-ASR 聯發科"
+          breeze_asr_25: "Breeze-ASR 聯發科",
+          qwen3_asr_gguf: "Qwen3-ASR 1.7B GGUF"
         };
         const localName = modelMap[localModelType] || localModelType;
         setActiveModelName(`本地: ${localName}`);

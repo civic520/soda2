@@ -61,6 +61,12 @@ const LOCAL_ASR_MODELS = [
     description: '聯發科技研發，針對繁體中文及中英混用最佳化，大模型精度（約 1.8GB），適合有足夠 RAM 的設備。',
     size: '~1.8 GB',
   },
+  {
+    id: 'qwen3_asr_gguf',
+    name: 'Qwen3-ASR 1.7B (GGUF)',
+    description: '阿里巴巴 Qwen3 大模型語音辨識（1.7B），llama.cpp GGUF 格式，需下載 llama-server 引擎（約 1.5GB）。',
+    size: '~1.5 GB',
+  },
 ];
 
 // AI 模型商供應商清單（對應 yukey 的 PostProcessProvider）
