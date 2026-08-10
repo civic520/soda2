@@ -168,7 +168,10 @@ class LlamaManager {
   }
 
   _getExistingFileSize(filePath) {
-    if (!fs.existsSync(filePath)) return 0;
+    if (!fs.existsSync(filePath)) {
+      this._forceDeletePath(filePath);
+      return 0;
+    }
     try {
       const st = fs.statSync(filePath);
       return st.size > 0 ? st.size : 0;
