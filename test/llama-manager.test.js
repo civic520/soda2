@@ -162,3 +162,149 @@ test("ensureFfmpegAvailable resolves when ffmpeg already in PATH", async () => {
   const result = await manager.ensureFfmpegAvailable();
   assert.equal(result.success, true);
 });
+
+test("startServer deduplicates concurrent calls (single spawn)", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-concurrent-"));
+  let spawnCount = 0;
+  const fakeProc = new EventEmitter();
+  fakeProc.kill = () => {};
+  fakeProc.stdout = new EventEmitter();
+  fakeProc.stderr = new EventEmitter();
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp, spawnFn: () => { spawnCount++; return fakeProc; } });
+  manager.ensureLlamaBinary = async () => ({ success: true, binaryPath: path.join(manager.getBinaryDir(), "llama-server.exe") });
+  manager.ensureModelAvailable = async () => ({ success: true, model_path: manager.getModelCachePath() });
+  manager.ensureFfmpegAvailable = async () => ({ success: true, ffmpegDir: null });
+  manager._findFfmpeg = async () => ({ success: true, ffmpegDir: null });
+  manager._waitForServerReady = async () => true;
+  await Promise.all([manager.startServer(), manager.startServer()]);
+  assert.equal(spawnCount, 1);
+  assert.equal(manager.serverReady, true);
+  assert.equal(manager.initializationPromise, null);
+});
+
+test("startServer resets initializationPromise after failure so it can be retried", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-fail-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager.ensureLlamaBinary = async () => { throw new Error("boom"); };
+  await assert.rejects(() => manager.startServer(), /boom/);
+  assert.equal(manager.initializationPromise, null);
+});
+
+test("_persistAudio writes blob into userData/audio and returns the path", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-persist-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const blob = Buffer.from("RIFF-test-audio");
+  const dest = manager._persistAudio(blob);
+  assert.ok(typeof dest === "string" && dest.includes(path.join("audio", "rec_")));
+  let exists = false;
+  for (let i = 0; i < 20; i++) {
+    if (fs.existsSync(dest)) { exists = true; break; }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  assert.equal(exists, true);
+  assert.deepEqual(fs.readFileSync(dest), blob);
+});
+
+test("transcribeAudio returns null audio_path when save_audio disabled", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-nopersist-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager.serverReady = true;
+  manager.databaseManager = { getSetting: (key, def) => (key === "save_audio" ? false : def) };
+  const http = require("node:http");
+  const origRequest = http.request;
+  const res = new EventEmitter();
+  res.statusCode = 200;
+  http.request = (opts, cb) => {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.end = () => process.nextTick(() => {
+      cb(res);
+      process.nextTick(() => {
+        res.emit("data", Buffer.from(JSON.stringify({ choices: [{ message: { content: "測試文字" } }] })));
+        res.emit("end");
+      });
+    });
+    return req;
+  };
+  try {
+    const result = await manager.transcribeAudio(Buffer.from("audio"), { no_persist: true });
+    assert.equal(result.success, true);
+    assert.equal(result.text, "測試文字");
+    assert.equal(result.audio_path, null);
+  } finally {
+    http.request = origRequest;
+  }
+});
+
+test("transcribeAudio persists audio_path when save_audio enabled", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-persist2-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager.serverReady = true;
+  const http = require("node:http");
+  const origRequest = http.request;
+  const res = new EventEmitter();
+  res.statusCode = 200;
+  http.request = (opts, cb) => {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.end = () => process.nextTick(() => {
+      cb(res);
+      process.nextTick(() => {
+        res.emit("data", Buffer.from(JSON.stringify({ choices: [{ message: { content: "測試文字" } }] })));
+        res.emit("end");
+      });
+    });
+    return req;
+  };
+  try {
+    const result = await manager.transcribeAudio(Buffer.from("audio"), {});
+    assert.equal(result.success, true);
+    assert.ok(typeof result.audio_path === "string" && result.audio_path.length > 0);
+    let exists = false;
+    for (let i = 0; i < 20; i++) {
+      if (fs.existsSync(result.audio_path)) { exists = true; break; }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(exists, true);
+  } finally {
+    http.request = origRequest;
+  }
+});
+
+test("ensureLlamaBinary caps overall_progress at 50 for binary stage", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-binprog-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager.downloadFile = async (url, dest, cb) => {
+    cb({ downloaded: 100, total: 100, progress: 100 });
+  };
+  manager.extractZip = async () => {
+    await fs.promises.mkdir(manager.getBinaryDir(), { recursive: true });
+    await fs.promises.writeFile(manager.getLlamaServerPath(), "x");
+  };
+  manager._forceDeletePath = () => {};
+  const events = [];
+  await manager.ensureLlamaBinary((p) => events.push(p));
+  assert.ok(events.length >= 2);
+  assert.ok(events[0].overall_progress <= 50);
+  assert.equal(events[events.length - 1].stage, "finished");
+  assert.equal(events[events.length - 1].overall_progress, 50);
+});
+
+test("ensureModelAvailable reports overall_progress in 50-100 range", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-modelprog-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager._forceDeletePath = () => {};
+  const writeFile = async (url, dest, cb) => {
+    cb({ downloaded: 10, total: 20, progress: 50 });
+    await fs.promises.writeFile(dest, "x".repeat(1024));
+  };
+  manager.downloadFile = writeFile;
+  const events = [];
+  await manager.ensureModelAvailable((p) => events.push(p));
+  assert.ok(events.length > 0);
+  for (const ev of events.slice(0, -1)) {
+    assert.ok(ev.overall_progress >= 50 && ev.overall_progress <= 100);
+  }
+  assert.equal(events[events.length - 1].stage, "finished");
+  assert.equal(events[events.length - 1].overall_progress, 100);
+});

@@ -130,7 +130,7 @@ module.exports = function register(ctx) {
   ipcMain.handle("download-models", async (event) => {
     if (isGgufModel(ctx)) {
       await ctx.llamaManager.ensureLlamaBinary((progress) => {
-        event.sender.send("model-download-progress", { stage: "downloading-binary", model: "asr", progress: progress.progress, overall_progress: Math.round(progress.progress / 2) });
+        event.sender.send("model-download-progress", progress);
       });
       return await ctx.llamaManager.ensureModelAvailable((progress) => {
         event.sender.send("model-download-progress", progress);
@@ -367,6 +367,13 @@ module.exports = function register(ctx) {
     try {
       if (ctx.databaseManager) {
         await ctx.databaseManager.setSetting('asr_model_type', modelName);
+      }
+      if (modelName === "qwen3_asr_gguf") {
+        if (ctx.sherpaManager && typeof ctx.sherpaManager._stopSherpaServer === "function") {
+          await ctx.sherpaManager._stopSherpaServer();
+        }
+      } else if (ctx.llamaManager && typeof ctx.llamaManager.stopServer === "function") {
+        await ctx.llamaManager.stopServer();
       }
       return { success: true };
     } catch (e) {

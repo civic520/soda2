@@ -278,8 +278,16 @@ async function startApp() {
   });
 
   if (databaseManager.getSetting("asr_model_type", "paraformer") === "qwen3_asr_gguf") {
-    llamaManager.startServer().catch((err) => {
-      logger.warn("llama-server 啟動失敗（不阻擋應用）:", err && err.message);
+    llamaManager.checkModelFiles().then((status) => {
+      if (status && status.models_downloaded) {
+        llamaManager.startServer().catch((err) => {
+          logger.warn("llama-server 啟動失敗（不阻擋應用）:", err && err.message);
+        });
+      } else {
+        logger.info("GGUF 模型未下載，等待使用者在設定中手動下載");
+      }
+    }).catch((err) => {
+      logger.warn("檢查 GGUF 模型檔案失敗:", err && err.message);
     });
   }
 
@@ -430,6 +438,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
+  llamaManager.stopServer().catch(() => {});
   globalShortcut.unregisterAll();
   typelessManager.cleanup();
 });

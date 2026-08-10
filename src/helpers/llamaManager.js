@@ -202,7 +202,7 @@ class LlamaManager {
       throw new Error("llama.cpp 二進位解壓後未找到 llama-server");
     }
     if (progressCallback) {
-      progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 100 });
+      progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 50 });
     }
     return { success: true, binaryPath: binPath };
   }
@@ -237,7 +237,7 @@ class LlamaManager {
         const currentOverall = overallDownloaded + p.downloaded;
         const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
         if (progressCallback) {
-          progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: pct });
+          progressCallback({ stage: "downloading", model: "asr", progress: pct, overall_progress: Math.round(50 + pct / 2) });
         }
       });
       const postSize = this._getExistingFileSize(dest);
@@ -409,6 +409,15 @@ class LlamaManager {
   }
 
   async startServer() {
+    if (this.initializationPromise) return this.initializationPromise;
+    this.initializationPromise = this._startServerInternal().catch((err) => {
+      this.initializationPromise = null;
+      throw err;
+    });
+    return this.initializationPromise;
+  }
+
+  async _startServerInternal() {
     if (this.serverProcess) return;
     const binaryStatus = await this.ensureLlamaBinary();
     const modelStatus = await this.ensureModelAvailable();
@@ -474,10 +483,12 @@ class LlamaManager {
       throw new Error("llama-server 啟動超時（120 秒）");
     }
     this.serverReady = true;
+    this.initializationPromise = null;
     this.logger.info && this.logger.info("llama-server 已就緒");
   }
 
   async stopServer() {
+    this.initializationPromise = null;
     if (this.serverProcess) {
       try {
         this.serverProcess.kill();
@@ -495,6 +506,26 @@ class LlamaManager {
     } catch (error) {
       this.logger.error && this.logger.error("重啟 llama-server 失敗:", error);
       return { success: false, error: error.message };
+    }
+  }
+
+  _persistAudio(blob) {
+    try {
+      const userDataPath = this.getUserDataPath();
+      const audioDir = path.join(userDataPath, "audio");
+      const destPath = path.join(audioDir, `rec_${require("crypto").randomUUID()}.wav`);
+      (async () => {
+        try {
+          await fs.promises.mkdir(audioDir, { recursive: true });
+          await fs.promises.writeFile(destPath, Buffer.from(blob));
+        } catch (e) {
+          this.logger.warn && this.logger.warn("保存錄音檔失敗:", e?.message || e);
+        }
+      })();
+      return destPath;
+    } catch (e) {
+      this.logger.warn && this.logger.warn("保存錄音檔失敗:", e?.message || e);
+      return null;
     }
   }
 
@@ -541,6 +572,14 @@ class LlamaManager {
         throw new Error(`llama-server 轉錄失敗 HTTP ${response.status}: ${response.body.slice(0, 200)}`);
       }
 
+      let audio_path = null;
+      const saveAudioFiles = this.databaseManager
+        ? this.databaseManager.getSetting("save_audio", this.databaseManager.getSetting("save_audio_files", true)) !== false
+        : true;
+      if (!(options && (options.no_persist || options.save_audio === false)) && saveAudioFiles) {
+        audio_path = this._persistAudio(audioBlob);
+      }
+
       return {
         success: true,
         text: text.trim(),
@@ -549,7 +588,7 @@ class LlamaManager {
         confidence: 0.95,
         language: "zh-CN",
         duration: 0,
-        audio_path: null,
+        audio_path,
       };
     } catch (error) {
       throw error;
