@@ -319,6 +319,234 @@ class LlamaManager {
     }
     return { success: true };
   }
+
+  getServerPort() {
+    this.serverPort = this.serverPort || 8234;
+    return this.serverPort;
+  }
+
+  async _waitForServerReady(timeoutMs = 60000) {
+    const port = this.getServerPort();
+    const deadline = Date.now() + timeoutMs;
+    const http = require("http");
+    const getFn = (this.httpsGet && this.httpsGet !== require("https").get) ? this.httpsGet : http.get;
+    while (Date.now() < deadline) {
+      try {
+        const ok = await new Promise((resolve) => {
+          const req = getFn({ host: "127.0.0.1", port, path: "/health", timeout: 1000 }, (res) => {
+            if (res && res.resume) res.resume();
+            resolve(res && res.statusCode === 200);
+          });
+          if (req && req.on) {
+            req.on("error", () => resolve(false));
+            req.on("timeout", () => { if (req.destroy) req.destroy(); resolve(false); });
+          }
+        });
+        if (ok) return true;
+      } catch (e) { /* retry */ }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return false;
+  }
+
+  // 解碼音訊需要 ffprobe/ffmpeg。搜尋順序：llama 目錄 → 常見安裝路徑 → 系統 PATH。
+  async _findFfmpeg() {
+    const candidates = [
+      path.join(this.getBinaryDir(), "ffprobe.exe"),
+      path.join(this.getBinaryDir(), "ffmpeg", "bin", "ffprobe.exe"),
+      "C:\\ffmpeg\\bin\\ffprobe.exe",
+      "C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe",
+      "C:\\Program Files\\Gyan.FFmpeg\\bin\\ffprobe.exe",
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return { success: true, ffmpegDir: path.dirname(c) };
+    }
+    try {
+      const { execFileSync } = require("child_process");
+      const out = execFileSync("ffprobe", ["-version"], { windowsHide: true, stdio: "ignore" });
+      return { success: true, ffmpegDir: null };
+    } catch (e) {
+      return { success: false, error: "找不到 ffmpeg/ffprobe，請安裝 FFmpeg 或下載靜態 build" };
+    }
+  }
+
+  async ensureFfmpegAvailable() {
+    const result = await this._findFfmpeg();
+    if (result.success) return result;
+    const ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+    const zipPath = path.join(this.getBinaryDir(), "ffmpeg-release-essentials.zip");
+    await fs.promises.mkdir(this.getBinaryDir(), { recursive: true });
+    await this.downloadFile(ffmpegUrl, zipPath);
+    await this.extractZip(zipPath, path.join(this.getBinaryDir(), "ffmpeg"));
+    this._forceDeletePath(zipPath);
+    const probe = path.join(this.getBinaryDir(), "ffmpeg", "bin", "ffprobe.exe");
+    if (!fs.existsSync(probe)) {
+      // 有些 build 解壓結構是 ffmpeg-x.x-full_build/bin/ffprobe.exe
+      const subdir = fs.readdirSync(path.join(this.getBinaryDir(), "ffmpeg"))[0];
+      const nested = path.join(this.getBinaryDir(), "ffmpeg", subdir, "bin", "ffprobe.exe");
+      if (fs.existsSync(nested)) {
+        await fs.promises.mkdir(path.join(this.getBinaryDir(), "ffmpeg", "bin"), { recursive: true });
+        for (const f of ["ffprobe.exe", "ffmpeg.exe"]) {
+          const src = path.join(this.getBinaryDir(), "ffmpeg", subdir, "bin", f);
+          if (fs.existsSync(src)) await fs.promises.copyFile(src, path.join(this.getBinaryDir(), "ffmpeg", "bin", f));
+        }
+      }
+    }
+    return { success: true, ffmpegDir: path.join(this.getBinaryDir(), "ffmpeg", "bin") };
+  }
+
+  async startServer() {
+    if (this.serverProcess) return;
+    const binaryStatus = await this.ensureLlamaBinary();
+    const modelStatus = await this.ensureModelAvailable();
+    if (!modelStatus.success) {
+      throw new Error("模型未下載，無法啟動 llama-server");
+    }
+    // llama-server 解碼音訊需要 ffprobe/ffmpeg 在 PATH 或同目錄
+    await this.ensureFfmpegAvailable();
+    const config = this.getModelConfig();
+    const args = ["-m", path.join(modelStatus.model_path, config.required_files[0])];
+    if (config.mmproj_url) {
+      args.push("--mmproj", path.join(modelStatus.model_path, path.basename(config.mmproj_url)));
+    }
+    args.push("--port", String(this.getServerPort()));
+    args.push("--host", "127.0.0.1");
+    args.push("--ctx-size", "4096");
+
+    const spawnEnv = Object.assign({}, process.env);
+    const ffmpegDir = (await this._findFfmpeg()).ffmpegDir;
+    if (ffmpegDir) {
+      spawnEnv.PATH = ffmpegDir + path.delimiter + (spawnEnv.PATH || "");
+    }
+    // 將 ffprobe/ffmpeg 複製到 llama-server 同目錄（Windows 同目錄優先搜尋）
+    if (ffmpegDir) {
+      for (const f of ["ffprobe.exe", "ffmpeg.exe"]) {
+        const src = path.join(ffmpegDir, f);
+        if (fs.existsSync(src) && !fs.existsSync(path.join(path.dirname(binaryStatus.binaryPath), f))) {
+          try { fs.copyFileSync(src, path.join(path.dirname(binaryStatus.binaryPath), f)); } catch (e) { /* ignore */ }
+        }
+      }
+    }
+
+    this.serverProcess = this.spawnFn(binaryStatus.binaryPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      env: spawnEnv,
+    });
+
+    this.serverProcess.stdout && this.serverProcess.stdout.on("data", (data) => {
+      this.logger.debug && this.logger.debug("llama-server stdout", { line: data.toString() });
+    });
+    this.serverProcess.stderr && this.serverProcess.stderr.on("data", (data) => {
+      const text = data.toString();
+      this.logger.debug && this.logger.debug("llama-server stderr", { line: text });
+      if (text.includes("error") || text.includes("Error")) {
+        this.logger.warn && this.logger.warn("llama-server 錯誤輸出", { text });
+      }
+    });
+    const currentProc = this.serverProcess;
+    this.serverProcess.on("close", (code) => {
+      this.logger.warn && this.logger.warn("llama-server 進程退出", { code });
+      if (this.serverProcess === currentProc) {
+        this.serverProcess = null;
+        this.serverReady = false;
+      }
+    });
+
+    const ready = await this._waitForServerReady(120000);
+    if (!ready) {
+      this.logger.error && this.logger.error("llama-server 啟動超時");
+      this.serverProcess.kill();
+      this.serverProcess = null;
+      throw new Error("llama-server 啟動超時（120 秒）");
+    }
+    this.serverReady = true;
+    this.logger.info && this.logger.info("llama-server 已就緒");
+  }
+
+  async stopServer() {
+    if (this.serverProcess) {
+      try {
+        this.serverProcess.kill();
+      } catch (e) { /* ignore */ }
+      this.serverProcess = null;
+      this.serverReady = false;
+    }
+  }
+
+  async restartServer() {
+    try {
+      await this.stopServer();
+      await this.startServer();
+      return { success: true, message: "llama-server 重啟成功" };
+    } catch (error) {
+      this.logger.error && this.logger.error("重啟 llama-server 失敗:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async transcribeAudio(audioBlob, options = {}) {
+    const tempPath = path.join(os.tmpdir(), `llama_asr_${Date.now()}_${Math.random().toString(36).slice(2)}.wav`);
+    await fs.promises.writeFile(tempPath, Buffer.from(audioBlob));
+
+    try {
+      if (!this.serverReady) {
+        await this.startServer();
+      }
+      const port = this.getServerPort();
+      const http = require("http");
+      const b64 = Buffer.from(audioBlob).toString("base64");
+      // PoC 確認：input_audio.data 必須是純 base64（無 data: 前綴），format 用 wav
+      const payload = JSON.stringify({
+        messages: [
+          { role: "user", content: [
+            { type: "text", text: "Transcribe the audio." },
+            { type: "input_audio", input_audio: { data: b64, format: "wav" } },
+          ] },
+        ],
+        max_tokens: 512,
+        temperature: 0,
+      });
+
+      const response = await new Promise((resolve, reject) => {
+        const req = http.request({ host: "127.0.0.1", port, path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } }, (res) => {
+          let body = "";
+          res.on("data", (c) => (body += c));
+          res.on("end", () => resolve({ status: res.statusCode, body }));
+        });
+        req.on("error", reject);
+        req.write(payload);
+        req.end();
+      });
+
+      let text = "";
+      if (response.status === 200) {
+        try {
+          const json = JSON.parse(response.body);
+          text = (json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content) || "";
+        } catch (e) {
+          this.logger.warn && this.logger.warn("解析 llama-server 回應失敗", { body: response.body });
+        }
+      } else {
+        throw new Error(`llama-server 轉錄失敗 HTTP ${response.status}: ${response.body.slice(0, 200)}`);
+      }
+
+      return {
+        success: true,
+        text: text.trim(),
+        segments: null,
+        raw_text: text,
+        confidence: 0.95,
+        language: "zh-CN",
+        duration: 0,
+        audio_path: null,
+      };
+    } catch (error) {
+      throw error;
+    } finally {
+      fs.promises.unlink(tempPath).catch(() => {});
+    }
+  }
 }
 
 module.exports = LlamaManager;

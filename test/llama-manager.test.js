@@ -139,3 +139,26 @@ test("downloadFile follows redirects with relative location", async () => {
   assert.ok(calls.length >= 2);
   assert.ok(calls[1].includes("huggingface.co"));
 });
+
+test("waitForServerReady polls the health endpoint", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-health-"));
+  const calls = [];
+  const fakeGet = (url, cb) => {
+    calls.push(url);
+    cb({ statusCode: 200, headers: {} });
+    return { on: () => {}, destroy: () => {} };
+  };
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp, httpsGet: fakeGet });
+  manager.serverPort = 8234;
+  const ready = await manager._waitForServerReady(3000);
+  assert.equal(ready, true);
+  assert.ok(calls.length >= 1);
+});
+
+test("ensureFfmpegAvailable resolves when ffmpeg already in PATH", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ffmpeg-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager._findFfmpeg = async () => ({ success: true, ffmpegDir: "C:\\found" });
+  const result = await manager.ensureFfmpegAvailable();
+  assert.equal(result.success, true);
+});
