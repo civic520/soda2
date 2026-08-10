@@ -26,6 +26,8 @@ from text_processing import (
     apply_emoji,
     format_lists,
     set_format_lists_enabled,
+    convert_ordinals,
+    set_ordinal_conversion_enabled,
     localize_english_punct,
     smart_join,
     set_custom_emojis,
@@ -1342,6 +1344,8 @@ class SherpaServer:
             options = options or {}
             # 自動列點（第一二三→1.2.3）：預設關，依使用者設定逐次帶入
             set_format_lists_enabled(options.get("auto_format_lists", False))
+            # 中文序數轉阿拉伯數字（預設關，依使用者設定帶入）
+            set_ordinal_conversion_enabled(options.get("convert_ordinal_numbers", False))
             use_whisper = options.get("model") == "whisper"
             recognizer = self.recognizer
             if use_whisper:
@@ -1552,6 +1556,8 @@ class SherpaServer:
             text_with_punc = "\n".join(punct_lines)
             # 規則式列點排版（免 AI）：第一/第二/第三… → 1. 2. 3. 換行清單
             text_with_punc = format_lists(text_with_punc)
+            # 中文序數轉阿拉伯數字（一點一→1.1、一、二、三→1. 2. 3.）
+            text_with_punc = convert_ordinals(text_with_punc)
             # 純英文行轉英文標點慣例（半形 + 句首大寫），中英混雜行不動
             text_with_punc = localize_english_punct(text_with_punc)
 
