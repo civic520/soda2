@@ -2,7 +2,7 @@ const fs = require("fs");
 const https = require("https");
 const os = require("os");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 
 const LLAMA_MODEL_CONFIG = {
   name: "qwen3-asr-1.7b-gguf",
@@ -122,9 +122,48 @@ class LlamaManager {
     try { fs.chmodSync(filePath, 0o777); fs.unlinkSync(filePath); return; } catch (e) { /* continue */ }
     if (this.platform === "win32") {
       try {
-        const { execSync } = require("child_process");
-        execSync(`attrib -R "${filePath}" & del /F /Q /A "${filePath}"`, { windowsHide: true, stdio: "ignore" });
+        execSync(`attrib -R "${filePath}" & del /F /Q /A "${filePath}"`, { windowsHide: true, stdio: "ignore", timeout: 10000 });
+        return;
+      } catch (e) { /* continue */ }
+      try {
+        execSync(`takeown /F "${filePath}" & icacls "${filePath}" /grant Everyone:F & del /F /Q /A "${filePath}"`, { windowsHide: true, stdio: "ignore", timeout: 10000 });
       } catch (e) { /* give up */ }
+    }
+  }
+
+  _removeDirectoryRecursive(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dirPath);
+    } catch (e) {
+      this.logger.warn && this.logger.warn(`無法讀取目錄 ${dirPath}: ${e.message}`);
+      this._forceDeletePath(dirPath);
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      try {
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isDirectory()) {
+          this._removeDirectoryRecursive(fullPath);
+        } else {
+          this._forceDeletePath(fullPath);
+        }
+      } catch (e) {
+        if (e.code === "EPERM") {
+          this.logger.warn && this.logger.warn(`無法存取 ${fullPath}，嘗試強制刪除`);
+          this._forceDeletePath(fullPath);
+        } else {
+          this.logger.warn && this.logger.warn(`無法處理 ${fullPath}: ${e.message}`);
+        }
+      }
+    }
+    try {
+      fs.rmdirSync(dirPath);
+    } catch (e) {
+      if (e.code === "ENOENT") return;
+      this.logger.warn && this.logger.warn(`無法刪除目錄 ${dirPath}: ${e.message}`);
     }
   }
 
@@ -133,8 +172,12 @@ class LlamaManager {
       const st = fs.statSync(filePath);
       return st.size > 0 ? st.size : 0;
     } catch (e) {
-      this._forceDeletePath(filePath);
-      return 0;
+      if (e.code === "EPERM") {
+        this.logger.warn && this.logger.warn(`檔案權限異常，嘗試強制清除: ${filePath}`);
+        this._forceDeletePath(filePath);
+        return 0;
+      }
+      throw e;
     }
   }
 
@@ -154,6 +197,9 @@ class LlamaManager {
     if (!fs.existsSync(binPath)) {
       throw new Error("llama.cpp 二進位解壓後未找到 llama-server");
     }
+    if (progressCallback) {
+      progressCallback({ stage: "finished", model: "asr", progress: 100, overall_progress: 100 });
+    }
     return { success: true, binaryPath: binPath };
   }
 
@@ -165,7 +211,7 @@ class LlamaManager {
     const config = this.getModelConfig();
     const targetDir = this.getModelCachePath();
     if (fs.existsSync(targetDir)) {
-      fs.rmSync(targetDir, { recursive: true, force: true });
+      this._removeDirectoryRecursive(targetDir);
     }
     await fs.promises.mkdir(targetDir, { recursive: true });
     let overallTotal = config.expected_size;
@@ -183,9 +229,6 @@ class LlamaManager {
       const url = filename.startsWith("mmproj")
         ? config.mmproj_url
         : config.url;
-      if (progressCallback) {
-        progressCallback({ stage: "downloading", model: "asr", progress: 0, overall_progress: 0 });
-      }
       await this.downloadFile(url, dest, (p) => {
         const currentOverall = overallDownloaded + p.downloaded;
         const pct = Math.min(99, Math.round((currentOverall / overallTotal) * 100));
@@ -257,8 +300,13 @@ class LlamaManager {
       if (!fs.existsSync(modelPath)) {
         return { success: true, overall_progress: 0, models: { asr: { progress: 0, downloaded: 0, total: config.expected_size } } };
       }
-      const mainFile = config.required_files[0];
-      const fileSize = this._getExistingFileSize(path.join(modelPath, mainFile));
+      const mainFiles = [...config.required_files];
+      if (config.mmproj_url) mainFiles.push(path.basename(config.mmproj_url));
+      let fileSize = 0;
+      for (const f of mainFiles) {
+        const sz = this._getExistingFileSize(path.join(modelPath, f));
+        if (sz > 0) fileSize += sz;
+      }
       const progress = Math.min(100, (fileSize / config.expected_size) * 100);
       return {
         success: true,
@@ -273,7 +321,7 @@ class LlamaManager {
   async deleteModelFiles() {
     const targetDir = this.getModelCachePath();
     if (fs.existsSync(targetDir)) {
-      fs.rmSync(targetDir, { recursive: true, force: true });
+      this._removeDirectoryRecursive(targetDir);
     }
     return { success: true };
   }

@@ -52,6 +52,13 @@ test("checkModelFiles reports downloaded when gguf exists with size", async () =
   assert.equal(result.details.model_path, dir);
 });
 
+test("deleteModelFiles returns success when model directory does not exist", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-del-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const result = await manager.deleteModelFiles();
+  assert.deepEqual(result, { success: true });
+});
+
 test("downloadFile follows redirects with relative location", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-dl-"));
   const dest = path.join(tmp, "out.bin");
