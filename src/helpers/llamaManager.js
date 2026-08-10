@@ -32,6 +32,7 @@ class LlamaManager {
     this.httpsGet = options.httpsGet || https.get;
     this.databaseManager = null;
     this.serverProcess = null;
+    this.accelerationDetector = null;
     this.serverReady = false;
     this.initializationPromise = null;
   }
@@ -519,13 +520,25 @@ class LlamaManager {
     args.push("--port", String(this.getServerPort()));
     args.push("--host", "127.0.0.1");
     args.push("--ctx-size", "4096");
-    // GPU 加速：CUDA runtime DLL 存在時卸載到 GPU；否則省略 -ngl（純 CPU）
-    const cudaStatus = await this.ensureCudaRuntime();
-    if (cudaStatus.success) {
-      args.push("-ngl", "999");
-      this.logger.info && this.logger.info("llama-server 啟用 GPU 加速（CUDA）");
+    // 依 asr_acceleration 設定決定 GPU 加速（自動 / CPU / GPU）
+    const acceleration = this.databaseManager
+      ? this.databaseManager.getSetting("asr_acceleration", "auto")
+      : "auto";
+    const det = this.accelerationDetector || (this.accelerationDetector = new (require("./acceleration"))());
+    const resolved = await det.resolveForEngine("llama", acceleration);
+    if (resolved.ngl) {
+      const cudaStatus = await this.ensureCudaRuntime();
+      if (cudaStatus.success) {
+        args.push("-ngl", "999");
+        this.logger.info && this.logger.info("llama-server 啟用 GPU 加速（CUDA）");
+      } else {
+        this.logger.warn && this.logger.warn("CUDA runtime 不可用，llama-server 將以 CPU 運行:", cudaStatus.error);
+      }
     } else {
-      this.logger.warn && this.logger.warn("CUDA runtime 不可用，llama-server 將以 CPU 運行:", cudaStatus.error);
+      this.logger.info && this.logger.info("llama-server 以 CPU 模式運行");
+    }
+    if (resolved.warning) {
+      this.logger.warn && this.logger.warn(resolved.warning);
     }
 
     const spawnEnv = Object.assign({}, process.env);

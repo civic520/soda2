@@ -358,3 +358,55 @@ test("cleanAsrText strips language prefix and asr_text markers", () => {
   );
   assert.equal(manager._cleanAsrText(""), "");
 });
+
+test("startServer adds -ngl when acceleration resolves ngl true", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ngl-"));
+  let spawnedArgs = null;
+  const fakeProc = new EventEmitter();
+  fakeProc.kill = () => {};
+  fakeProc.stdout = new EventEmitter();
+  fakeProc.stderr = new EventEmitter();
+  const manager = new LlamaManager(null, {
+    platform: "win32",
+    userDataPath: tmp,
+    projectRoot: tmp,
+    spawnFn: (_cmd, args) => { spawnedArgs = args; return fakeProc; },
+  });
+  manager.databaseManager = { getSetting: (k, d) => (k === "asr_acceleration" ? "gpu" : d) };
+  manager.ensureLlamaBinary = async () => ({ success: true, binaryPath: path.join(manager.getBinaryDir(), "llama-server.exe") });
+  manager.ensureModelAvailable = async () => ({ success: true, model_path: manager.getModelCachePath() });
+  manager.ensureFfmpegAvailable = async () => ({ success: true, ffmpegDir: null });
+  manager.ensureCudaRuntime = async () => ({ success: true });
+  manager._findFfmpeg = async () => ({ success: true, ffmpegDir: null });
+  manager._waitForServerReady = async () => true;
+  manager.accelerationDetector = { resolveForEngine: async () => ({ ngl: true }) };
+  await manager.startServer();
+  assert.ok(spawnedArgs.includes("-ngl"));
+  assert.ok(spawnedArgs.includes("999"));
+  await manager.stopServer();
+});
+
+test("startServer omits -ngl when acceleration resolves ngl false", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-nongl-"));
+  let spawnedArgs = null;
+  const fakeProc = new EventEmitter();
+  fakeProc.kill = () => {};
+  fakeProc.stdout = new EventEmitter();
+  fakeProc.stderr = new EventEmitter();
+  const manager = new LlamaManager(null, {
+    platform: "win32",
+    userDataPath: tmp,
+    projectRoot: tmp,
+    spawnFn: (_cmd, args) => { spawnedArgs = args; return fakeProc; },
+  });
+  manager.databaseManager = { getSetting: (k, d) => (k === "asr_acceleration" ? "cpu" : d) };
+  manager.ensureLlamaBinary = async () => ({ success: true, binaryPath: path.join(manager.getBinaryDir(), "llama-server.exe") });
+  manager.ensureModelAvailable = async () => ({ success: true, model_path: manager.getModelCachePath() });
+  manager.ensureFfmpegAvailable = async () => ({ success: true, ffmpegDir: null });
+  manager._findFfmpeg = async () => ({ success: true, ffmpegDir: null });
+  manager._waitForServerReady = async () => true;
+  manager.accelerationDetector = { resolveForEngine: async () => ({ ngl: false }) };
+  await manager.startServer();
+  assert.equal(spawnedArgs.includes("-ngl"), false);
+  await manager.stopServer();
+});
