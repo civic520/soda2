@@ -397,8 +397,7 @@ const SettingsPage = () => {
             }
           }
         } else {
-          await window.electronAPI?.confirmMigrateModels?.(result.newDir, false);
-          toast.info('未搬移模型，目錄已切換');
+          toast.info('未搬移模型，目錄保持原狀');
         }
       } else {
         toast.info(result.message || '目錄已變更');

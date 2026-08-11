@@ -176,7 +176,11 @@ module.exports = function register(ctx) {
       : path.join(__dirname, "..", "..", "..", "model");
     const currentCustom = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
     const oldDir = currentCustom || defaultDir;
-    const newDir = targetDir;
+
+    if (typeof targetDir !== "string" || !targetDir.trim()) {
+      return { success: false, error: "目標目錄無效" };
+    }
+    const newDir = targetDir.trim();
 
     if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
 
@@ -190,7 +194,16 @@ module.exports = function register(ctx) {
           const stat = fs.statSync(srcPath);
           if (!stat.isDirectory()) continue;
           if (fs.existsSync(destPath)) continue;
-          fs.renameSync(srcPath, destPath);
+          try {
+            fs.renameSync(srcPath, destPath);
+          } catch (e) {
+            if (e.code === 'EXDEV') {
+              fs.cpSync(srcPath, destPath, { recursive: true });
+              fs.rmSync(srcPath, { recursive: true, force: true });
+            } else {
+              throw e;
+            }
+          }
           movedModels.push(entry);
         } catch (e) {
           ctx.logger && ctx.logger.warn && ctx.logger.warn(`模型搬移失敗 ${entry}:`, e.message);
