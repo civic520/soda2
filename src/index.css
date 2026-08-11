@@ -472,32 +472,32 @@
     pointer-events: none;
     z-index: 10;
   }
-  .ai-coin-particle:nth-child(1) {
+  .ai-coin-burst .ai-coin-particle:nth-child(1) {
     width: 14px; height: 14px;
     top: -6px; left: 10px;
     animation: ai-coin-burst-a 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
   }
-  .ai-coin-particle:nth-child(2) {
+  .ai-coin-burst .ai-coin-particle:nth-child(2) {
     width: 11px; height: 11px;
     top: 0; right: -4px;
     animation: ai-coin-burst-b 1.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite 0.3s;
   }
-  .ai-coin-particle:nth-child(3) {
+  .ai-coin-burst .ai-coin-particle:nth-child(3) {
     width: 9px; height: 9px;
     bottom: -5px; left: 4px;
     animation: ai-coin-burst-c 1.8s cubic-bezier(0.2, 0.8, 0.3, 1) infinite 0.6s;
   }
-  .ai-coin-particle:nth-child(4) {
+  .ai-coin-burst .ai-coin-particle:nth-child(4) {
     width: 13px; height: 13px;
     top: 8px; left: -5px;
     animation: ai-coin-burst-a 2s cubic-bezier(0.2, 0.8, 0.3, 1) infinite 0.9s;
   }
-  .ai-coin-particle:nth-child(5) {
+  .ai-coin-burst .ai-coin-particle:nth-child(5) {
     width: 10px; height: 10px;
     bottom: 2px; right: 6px;
     animation: ai-coin-burst-b 1.5s cubic-bezier(0.2, 0.8, 0.3, 1) infinite 1.2s;
   }
-  .ai-coin-particle:nth-child(6) {
+  .ai-coin-burst .ai-coin-particle:nth-child(6) {
     width: 12px; height: 12px;
     top: -2px; right: 14px;
     animation: ai-coin-burst-c 1.9s cubic-bezier(0.2, 0.8, 0.3, 1) infinite 1.5s;
@@ -506,18 +506,18 @@
   /* 煙火式：粒子從中心飛散到四周後淡出 */
   @keyframes ai-coin-burst-a {
     0%   { transform: translate(0, 0) scale(0.6); opacity: 1; }
-    60%  { transform: translate(18px, -22px) scale(1.4); opacity: 1; }
-    100% { transform: translate(34px, -38px) scale(0.3); opacity: 0; }
+    60%  { transform: translate(10px, -14px) scale(1.4); opacity: 1; }
+    100% { transform: translate(18px, -22px) scale(0.3); opacity: 0; }
   }
   @keyframes ai-coin-burst-b {
     0%   { transform: translate(0, 0) scale(0.6); opacity: 1; }
-    60%  { transform: translate(-20px, -16px) scale(1.3); opacity: 1; }
-    100% { transform: translate(-38px, -30px) scale(0.3); opacity: 0; }
+    60%  { transform: translate(-11px, -10px) scale(1.3); opacity: 1; }
+    100% { transform: translate(-20px, -18px) scale(0.3); opacity: 0; }
   }
   @keyframes ai-coin-burst-c {
     0%   { transform: translate(0, 0) scale(0.6); opacity: 1; }
-    60%  { transform: translate(14px, 20px) scale(1.3); opacity: 1; }
-    100% { transform: translate(26px, 40px) scale(0.3); opacity: 0; }
+    60%  { transform: translate(8px, 12px) scale(1.3); opacity: 1; }
+    100% { transform: translate(14px, 22px) scale(0.3); opacity: 0; }
   }
 
 @keyframes gold-shimmer {

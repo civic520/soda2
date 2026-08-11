@@ -1648,19 +1648,19 @@ export default function App() {
         }`}
         style={{ WebkitAppRegion: 'drag' }}
       >
-        <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+        <div className={`relative shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
           isRecording ? (commandMode ? 'mini-capsule-icon-command animate-pulse' : (cloudAsrActive ? 'mini-capsule-icon-cloud animate-pulse' : 'mini-capsule-icon-recording animate-pulse')) : commandMode ? 'mini-capsule-icon-command-idle' : 'bg-gray-100 dark:bg-gray-800'
         }`}>
           {cloudAsrActive && isRecording && (<><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /></>)}
           {isAiOptimizedRecording && (
-            <>
+            <div className="ai-coin-burst">
               <div className="ai-coin-particle" />
               <div className="ai-coin-particle" />
               <div className="ai-coin-particle" />
               <div className="ai-coin-particle" />
               <div className="ai-coin-particle" />
               <div className="ai-coin-particle" />
-            </>
+            </div>
           )}
           <img src="./icon.png" alt="" className="w-7 h-7 rounded-md relative z-10" draggable="false" />
         </div>
