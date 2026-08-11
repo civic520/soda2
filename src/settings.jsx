@@ -374,26 +374,43 @@ const SettingsPage = () => {
     }
   };
 
-  // 變更模型目錄
+  // 變更模型目錄：選新目錄 → 若有模型需搬移則詢問 → 搬移/切換
   const handleChangeModelDir = async () => {
     try {
       const result = await window.electronAPI?.changeModelDir?.();
-      if (result?.success) {
-        if (result.moved) {
-          const names = result.movedModels?.length ? `（已移動 ${result.movedModels.length} 個模型）` : '';
-          toast.success(`模型目錄已變更${names}`);
-        } else {
-          toast.info(result.message || '目錄未變更');
-        }
-        // 重新載入目錄路徑和模型狀態
-        const dirRes = await window.electronAPI?.getModelDir?.();
-        if (dirRes?.success) setModelDir(dirRes);
-        await loadModelStatuses();
-      } else if (!result?.canceled) {
-        toast.error('變更失敗: ' + (result?.error || '未知錯誤'));
+      if (!result?.success) {
+        if (!result?.canceled) toast.error('變更模型目錄失敗');
+        return;
       }
+      if (result.needConfirm) {
+        const modelList = result.pendingModels.join('\n');
+        const migrate = window.confirm(
+          `發現 ${result.pendingModels.length} 個已下載模型，是否搬移到新目錄？\n\n${modelList}\n\n（選擇「確定」搬移模型，選擇「取消」保留在原處，僅切換目錄）`
+        );
+        if (migrate) {
+          const migrateResult = await window.electronAPI?.confirmMigrateModels?.(result.newDir, true);
+          if (migrateResult?.success) {
+            const failed = migrateResult.failedModels?.length ? `（${migrateResult.failedModels.length} 個失敗）` : '';
+            toast.success(`已搬移 ${migrateResult.movedModels?.length ?? 0} 個模型${failed}`);
+            if (migrateResult.failedModels?.length) {
+              toast.warning(`搬移失敗：${migrateResult.failedModels.join('、')}`);
+            }
+          }
+        } else {
+          await window.electronAPI?.confirmMigrateModels?.(result.newDir, false);
+          toast.info('未搬移模型，目錄已切換');
+        }
+      } else {
+        toast.info(result.message || '目錄已變更');
+      }
+      // 重新載入目錄狀態與模型狀態
+      if (window.electronAPI?.getModelDir) {
+        const dir = await window.electronAPI.getModelDir();
+        if (dir?.success) setModelDir(dir);
+      }
+      await loadModelStatuses();
     } catch (e) {
-      toast.error('變更失敗: ' + e.message);
+      toast.error('變更模型目錄失敗: ' + e.message);
     }
   };
 
