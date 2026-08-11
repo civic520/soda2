@@ -138,6 +138,11 @@ cache/
 *.aac
 *.flac
 
+# 但保留內建提示音效（assets/sounds 下的音效檔要入庫）
+!assets/sounds/
+assets/sounds/*
+!assets/sounds/*.wav
+
 # Database files
 *.db
 *.sqlite
