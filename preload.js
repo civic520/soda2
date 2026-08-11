@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openDefaultModelDir: () => ipcRenderer.invoke("open-default-model-dir"),
   getModelDir: () => ipcRenderer.invoke("get-model-dir"),
   changeModelDir: () => ipcRenderer.invoke("change-model-dir"),
+  confirmMigrateModels: (targetDir, doMigrate) => ipcRenderer.invoke("confirm-migrate-models", targetDir, doMigrate),
   onMiniModeChanged: (callback) => {
     const handler = (_event, enabled) => callback(enabled);
     ipcRenderer.on("mini-mode-changed", handler);
