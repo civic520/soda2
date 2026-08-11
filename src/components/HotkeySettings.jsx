@@ -296,6 +296,7 @@ const HotkeySettings = () => {
             if (aiTrigger.triggerId.includes('+')) {
               setAiOptTrigger('custom');
               setAiOptCustomValue(aiTrigger.triggerId);
+              setAiOptCustomRecording(true);
             } else {
               setAiOptTrigger(aiTrigger.triggerId);
             }
@@ -397,7 +398,6 @@ const HotkeySettings = () => {
               setAiOptTrigger(val);
               if (val === 'custom') {
                 setAiOptCustomRecording(true);
-                setAiOptCustomValue('');
               } else {
                 setAiOptCustomRecording(false);
                 await window.electronAPI.setAiOptimizeTrigger(val);
@@ -417,10 +417,6 @@ const HotkeySettings = () => {
           <div className="mt-2">
             <button
               type="button"
-              onClick={(e) => {
-                const acc = keyEventToAccelerator(e);
-                if (acc) { setAiOptCustomValue(acc); }
-              }}
               onKeyDown={(e) => {
                 e.preventDefault();
                 const acc = keyEventToAccelerator(e);
