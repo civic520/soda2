@@ -678,18 +678,19 @@ module.exports = function register(ctx) {
 
   // AI 優化錄音觸發鍵設定
   ipcMain.handle("set-ai-optimize-trigger", async (event, triggerValue) => {
-    try {
-      if (!ctx.typelessManager) {
-        return { success: false, error: "TypeLess 管理器未初始化" };
-      }
-      ctx.typelessManager.setAiOptimizeTrigger(triggerValue);
-      await ctx.databaseManager.setSetting('ai_optimize_trigger', triggerValue);
-      ctx.logger.info(`AI 優化錄音觸發鍵設為: ${triggerValue || '停用'}`);
-      return { success: true };
-    } catch (error) {
-      ctx.logger.error("設定 AI 優化錄音觸發鍵失敗:", error);
-      return { success: false, error: error.message };
+    if (!ctx.typelessManager) {
+      return { success: false, error: "TypelessManager 未初始化" };
     }
+    ctx.typelessManager.setAiOptimizeTrigger(triggerValue);
+    // 檢查解析結果：固定 ID 或自訂解析成功才接受
+    const FIXED = ['none', 'altRight', 'ctrlRight', 'f11', 'f12'];
+    const isFixed = FIXED.includes(triggerValue);
+    const parsed = !isFixed ? ctx.typelessManager.aiOptimizeCustom : true;
+    if (!isFixed && !parsed) {
+      return { success: false, error: "無法解析此快捷鍵，請使用支援的按鍵組合" };
+    }
+    await ctx.databaseManager.setSetting('ai_optimize_trigger', triggerValue);
+    return { success: true, triggerId: triggerValue };
   });
 
   ipcMain.handle("get-ai-optimize-trigger", async () => {

@@ -293,12 +293,14 @@ const HotkeySettings = () => {
           }
           const aiTrigger = await window.electronAPI.getAiOptimizeTrigger();
           if (aiTrigger.success && aiTrigger.triggerId) {
-            if (aiTrigger.triggerId.includes('+')) {
+            const FIXED = ['none', 'altRight', 'ctrlRight', 'f11', 'f12'];
+            if (FIXED.includes(aiTrigger.triggerId)) {
+              setAiOptTrigger(aiTrigger.triggerId);
+              setAiOptCustomRecording(false);
+            } else if (aiTrigger.triggerId) {
               setAiOptTrigger('custom');
               setAiOptCustomValue(aiTrigger.triggerId);
               setAiOptCustomRecording(true);
-            } else {
-              setAiOptTrigger(aiTrigger.triggerId);
             }
           }
         }
@@ -417,14 +419,22 @@ const HotkeySettings = () => {
           <div className="mt-2">
             <button
               type="button"
-              onKeyDown={(e) => {
+              onKeyDown={async (e) => {
                 e.preventDefault();
+                if (e.key === 'Escape') {
+                  setAiOptCustomRecording(false);
+                  return;
+                }
                 const acc = keyEventToAccelerator(e);
                 if (acc) {
                   setAiOptCustomValue(acc);
-                  setAiOptCustomRecording(false);
-                  setAiOptTrigger(acc);
-                  window.electronAPI.setAiOptimizeTrigger(acc);
+                  const res = await window.electronAPI.setAiOptimizeTrigger(acc);
+                  if (res && res.success) {
+                    setAiOptTrigger('custom');
+                    setAiOptCustomRecording(true);
+                  } else {
+                    toast.error(res?.error || '快捷鍵設定失敗');
+                  }
                 }
               }}
               autoFocus

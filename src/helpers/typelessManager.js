@@ -441,12 +441,13 @@ class TypelessManager {
     this.aiOptimizeRecordingActive = false;
     this._aiOptTriggerHeld = false;
     this._aiOptLastToggleTime = 0;
-    if (triggerValue && triggerValue.includes("+")) {
-      this.aiOptimizeCustom = this._parseAccelerator(triggerValue);
-      this.safeLog('info', `AI 優化錄音觸發鍵(自訂): ${triggerValue}${this.aiOptimizeCustom ? '' : ' (解析失敗)'}`);
-    } else {
+    const FIXED_IDS = ['none', 'altRight', 'ctrlRight', 'f11', 'f12'];
+    if (FIXED_IDS.includes(triggerValue)) {
       this.aiOptimizeTriggerKeys = AI_OPTIMIZE_TRIGGER_PRESETS[triggerValue] || [];
       this.safeLog('info', `AI 優化錄音觸發鍵: ${triggerValue || '停用'}`);
+    } else {
+      this.aiOptimizeCustom = this._parseAccelerator(triggerValue);
+      this.safeLog('info', `AI 優化錄音觸發鍵(自訂): ${triggerValue}${this.aiOptimizeCustom ? '' : ' (解析失敗)'}`);
     }
   }
 
@@ -457,7 +458,10 @@ class TypelessManager {
     const modifiers = { ctrl: false, shift: false, alt: false, meta: false };
     const keyPart = parts.pop();
     for (const p of parts) {
-      if (p === 'CommandOrControl' || p === 'Ctrl' || p === 'Control') modifiers.ctrl = true;
+      if (p === 'CommandOrControl' || p === 'Ctrl' || p === 'Control') {
+        if (process.platform === 'darwin') modifiers.meta = true;
+        else modifiers.ctrl = true;
+      }
       else if (p === 'Shift') modifiers.shift = true;
       else if (p === 'Alt') modifiers.alt = true;
       else if (p === 'Meta') modifiers.meta = true;
