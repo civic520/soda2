@@ -74,13 +74,18 @@ module.exports = function register(ctx) {
   ipcMain.handle("open-default-model-dir", () => {
     const shell = require("electron").shell;
     try {
-      // 開發模式：專案根目錄/model/；打包版：userData/models/
-      const isPackaged = !!(require("electron").app?.isPackaged);
+      // 優先使用自訂模型目錄；否則開發模式用專案根/model/、打包版用 userData/models/
+      const customDir = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
       let modelsDir;
-      if (isPackaged) {
-        modelsDir = path.join(require("electron").app.getPath("userData"), "models");
+      if (customDir) {
+        modelsDir = customDir;
       } else {
-        modelsDir = path.join(__dirname, "..", "..", "..", "model");
+        const isPackaged = !!(require("electron").app?.isPackaged);
+        if (isPackaged) {
+          modelsDir = path.join(require("electron").app.getPath("userData"), "models");
+        } else {
+          modelsDir = path.join(__dirname, "..", "..", "..", "model");
+        }
       }
       if (!fs.existsSync(modelsDir)) {
         fs.mkdirSync(modelsDir, { recursive: true });

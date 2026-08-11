@@ -22,6 +22,22 @@ test("llama model cache path resolves under userData/models", () => {
   assert.equal(manager.getModelCachePath(), path.join(tmp, "models", "qwen3-asr-1.7b-gguf"));
 });
 
+test("llama model cache path uses custom_model_dir when set and default absent", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-custom-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  manager.databaseManager = { getSetting: (k, d) => (k === "custom_model_dir" ? "E:\\Program Files\\soda2\\models" : d) };
+  assert.equal(manager.getModelCachePath(), path.join("E:\\Program Files\\soda2\\models", "qwen3-asr-1.7b-gguf"));
+});
+
+test("llama model cache path stays in userData when default dir exists even with custom set", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-customexist-"));
+  const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
+  const defaultDir = path.join(tmp, "models", "qwen3-asr-1.7b-gguf");
+  fs.mkdirSync(defaultDir, { recursive: true });
+  manager.databaseManager = { getSetting: (k, d) => (k === "custom_model_dir" ? "E:\\custom" : d) };
+  assert.equal(manager.getModelCachePath(), defaultDir);
+});
+
 test("llama server binary path points at llama-server.exe on win32", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-bin-"));
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });

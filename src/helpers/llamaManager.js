@@ -55,7 +55,16 @@ class LlamaManager {
   }
 
   getModelCachePath() {
-    return path.join(this.getUserDataPath(), "models", LLAMA_MODEL_CONFIG.name);
+    // 優先使用自訂模型目錄；否則用 userData/models
+    const name = LLAMA_MODEL_CONFIG.name;
+    const defaultModelDir = path.join(this.getUserDataPath(), "models", name);
+    if (this.databaseManager) {
+      const customDir = this.databaseManager.getSetting("custom_model_dir", "");
+      if (customDir && !fs.existsSync(defaultModelDir)) {
+        return path.join(customDir, name);
+      }
+    }
+    return defaultModelDir;
   }
 
   getBinaryDir() {
