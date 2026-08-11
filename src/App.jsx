@@ -383,6 +383,8 @@ export default function App() {
   const [autoEnterAfterPaste, setAutoEnterAfterPaste] = useState(false);
   const [recordingSoundEnabled, setRecordingSoundEnabled] = useState(true);
   const [soundFeedbackVolume, setSoundFeedbackVolume] = useState(0.8);
+  const [soundTheme, setSoundTheme] = useState('coin01');
+  const soundThemeRef = useRef('coin01');
   const [muteWhileRecording, setMuteWhileRecording] = useState(false);
 
   // 點擊錄音流程：等待使用者點擊目標位置
@@ -410,6 +412,10 @@ export default function App() {
 
         const fbVol = await window.electronAPI.getSetting('sound_feedback_volume', 0.8);
         setSoundFeedbackVolume(Math.min(1, Math.max(0, fbVol || 0.8)));
+
+        const soundTheme = await window.electronAPI.getSetting('sound_theme', 'coin01');
+        setSoundTheme(soundTheme || 'coin01');
+        soundThemeRef.current = soundTheme || 'coin01';
 
         const muteRec = await window.electronAPI.getSetting('mute_while_recording', false);
         setMuteWhileRecording(muteRec === true);
@@ -442,6 +448,9 @@ export default function App() {
           setRecordingSoundEnabled(data.value !== false);
         } else if (data.key === 'sound_feedback_volume') {
           setSoundFeedbackVolume(Math.min(1, Math.max(0, data.value || 0.8)));
+        } else if (data.key === 'sound_theme') {
+          setSoundTheme(data.value || 'coin01');
+          soundThemeRef.current = data.value || 'coin01';
         } else if (data.key === 'mute_while_recording') {
           setMuteWhileRecording(data.value === true);
         } else if (data.key === 'app_theme') {
@@ -722,13 +731,21 @@ export default function App() {
     if (isRecording) recordingStartRef.current = Date.now();
   }, [isRecording]);
 
-  // 錄音提示音
-  const playBeep = useCallback(async (name) => {
+  // 錄音提示音：依目前音效主題選開始/結束音
+  const playBeep = useCallback(async (type) => {
     if (!recordingSoundEnabled) { console.log('[sound] playBeep skipped: recordingSoundEnabled=false'); return; }
+    const theme = soundThemeRef.current || 'coin01';
+    const isStart = type === 'start';
+    let name;
+    if (theme === 'marimba') {
+      name = isStart ? 'marimba_start' : 'marimba_stop';
+    } else {
+      name = `${theme}_${isStart ? 'start' : 'stop'}`;
+    }
     try {
       console.log('[sound] playBeep calling IPC for:', name);
       const res = await window.electronAPI?.playSound(name);
-      console.log('[sound] playBeep IPC result:', res ? `data=${res.data?.length}chars, mimeType=${res.mimeType}, playedNatively=${res.playedNatively}` : 'null');
+      console.log('[sound] playBeep IPC result:', res ? `data=${res.data?.length}chars` : 'null');
       if (res?.playedNatively || !res?.data) return;
       await playBase64Sound(res.data, res.mimeType, soundFeedbackVolume);
       console.log('[sound] playBeep completed');
@@ -738,7 +755,7 @@ export default function App() {
   // 統一的錄音函數
   const startRecording = useCallback(async () => {
     console.log('[mute-debug] startRecording called, muteWhileRecording=' + muteWhileRecording);
-    await playBeep('rec_start');
+    await playBeep('start');
     // 等音效播放完畢再靜音，否則使用者聽不到啟動音
     await new Promise(r => setTimeout(r, 200));
     if (muteWhileRecording) {
@@ -764,7 +781,7 @@ export default function App() {
     }
     // 注意：AI 優化設定不能在這裡清除！processAudio 需要讀取 setSetting 的值
     // 清除邏輯已移到 handleAIOptimizationComplete（轉錄完成後才清除）
-    await playBeep('rec_stop');
+    await playBeep('stop');
     // 等音效播完再停止錄音
     await new Promise(r => setTimeout(r, 200));
     if (streamingMode) {
@@ -1375,7 +1392,7 @@ export default function App() {
       console.log('[mute-debug] TypeLess start, muteWhileRecordingRef=' + muteWhileRecordingRef.current);
       if (isRecordingNormalRef.current) {
         recordingStartedRef.current = false;
-        playBeep('rec_stop');
+        playBeep('stop');
         if (muteWhileRecordingRef.current) {
           console.log('[mute-debug] TypeLess calling unmute...');
           window.electronAPI?.muteSystemAudio(false).then(r => console.log('[mute-debug] TypeLess unmute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] unmute error:', e));
@@ -1384,7 +1401,7 @@ export default function App() {
       } else if (!isRecordingProcessingNormalRef.current && modelStatusIsReadyRef.current) {
         recordingStartedRef.current = true;
         (async () => {
-          await playBeep('rec_start');
+          await playBeep('start');
           await new Promise(r => setTimeout(r, 200));
           if (muteWhileRecordingRef.current) {
             console.log('[mute-debug] TypeLess calling mute...');
@@ -1409,7 +1426,7 @@ export default function App() {
         window.electronAPI?.muteSystemAudio(false).then(r => console.log('[mute-debug] TypeLess stop unmute result:', JSON.stringify(r))).catch(e => console.warn('[mute-debug] unmute error:', e));
       }
       (async () => {
-        await playBeep('rec_stop');
+        await playBeep('stop');
         await new Promise(r => setTimeout(r, 200));
         if (isRecordingNormalRef.current) {
           stopRecordingNormal();
