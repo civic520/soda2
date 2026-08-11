@@ -385,7 +385,7 @@ const SettingsPage = () => {
       if (result.needConfirm) {
         const modelList = result.pendingModels.join('\n');
         const migrate = window.confirm(
-          `發現 ${result.pendingModels.length} 個已下載模型，是否搬移到新目錄？\n\n${modelList}\n\n（選擇「確定」搬移模型，選擇「取消」保留在原處，僅切換目錄）`
+          `發現 ${result.pendingModels.length} 個已下載模型，是否搬移到新目錄？\n\n${modelList}\n\n（選擇「確定」搬移模型並切換目錄，選擇「取消」保留在原處且維持原目錄）`
         );
         if (migrate) {
           const migrateResult = await window.electronAPI?.confirmMigrateModels?.(result.newDir, true);
