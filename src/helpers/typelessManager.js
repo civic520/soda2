@@ -26,6 +26,21 @@ const AI_OPTIMIZE_TRIGGER_PRESETS = {
   f12: [UiohookKey.F12],
 };
 
+// accelerator 鍵名 → uiohook keycode（支援 A-Z、F1-F12、Space、方向鍵）
+function _buildKeycodeMap() {
+  const map = {};
+  for (let i = 65; i <= 90; i++) map[String.fromCharCode(i)] = UiohookKey[String.fromCharCode(i)];
+  for (let i = 1; i <= 12; i++) map[`F${i}`] = UiohookKey[`F${i}`];
+  map.Space = UiohookKey.Space;
+  map.Up = UiohookKey.Up; map.Down = UiohookKey.Down;
+  map.Left = UiohookKey.Left; map.Right = UiohookKey.Right;
+  map.Escape = UiohookKey.Escape;
+  map.Enter = UiohookKey.Enter;
+  map.Tab = UiohookKey.Tab;
+  return map;
+}
+const _KEYCODE_BY_ACCELERATOR = _buildKeycodeMap();
+
 class TypelessManager {
   constructor(logger = null) {
     this.logger = logger;
@@ -53,6 +68,7 @@ class TypelessManager {
     this.aiOptimizeModifier = 'shift'; // AI 優化修飾鍵：'shift' | 'ctrl' | 'alt' | 'meta' | null
     // AI 優化錄音觸發鍵（uiohook，可設定右 Alt/右 Ctrl 等）
     this.aiOptimizeTriggerKeys = []; // 預設停用
+    this.aiOptimizeCustom = null;
     this.aiOptimizeRecordingActive = false; // 目前是否正在 AI 優化錄音
     this._aiOptTriggerHeld = false; // 防止 auto-repeat
     this._aiOptLastToggleTime = 0; // 上次切換時間
@@ -131,7 +147,7 @@ class TypelessManager {
     }
 
     // AI 優化錄音觸發鍵偵測（toggle 模式，與 TypeLess 獨立）
-    if (this.aiOptimizeTriggerKeys.includes(event.keycode)) {
+    if (this._checkAiOptimizeTrigger(event)) {
       // 忽略 auto-repeat（與 TypeLess toggle 相同邏輯）
       if (this._aiOptTriggerHeld && (Date.now() - this._aiOptLastToggleTime) < 600) return;
       this._aiOptTriggerHeld = true;
@@ -226,7 +242,7 @@ class TypelessManager {
     if (!this.isEnabled) return;
 
     // AI 優化錄音觸發鍵 keyup
-    if (this.aiOptimizeTriggerKeys.includes(event.keycode)) {
+    if (this._checkAiOptimizeTrigger(event)) {
       this._aiOptTriggerHeld = false;
       return;
     }
@@ -418,14 +434,51 @@ class TypelessManager {
 
   /**
    * 設置 AI 優化錄音觸發鍵（uiohook 路徑）
-   * @param {string} triggerId - 'none' | 'altRight' | 'ctrlRight' | 'f11' | 'f12'
+   * @param {string} triggerValue - 'none' | 'altRight' | 'ctrlRight' | 'f11' | 'f12' | accelerator 字串
    */
-  setAiOptimizeTrigger(triggerId) {
-    this.aiOptimizeTriggerKeys = AI_OPTIMIZE_TRIGGER_PRESETS[triggerId] || [];
+  setAiOptimizeTrigger(triggerValue) {
+    this.aiOptimizeCustom = null;
+    this.aiOptimizeTriggerKeys = [];
     this.aiOptimizeRecordingActive = false;
     this._aiOptTriggerHeld = false;
     this._aiOptLastToggleTime = 0;
-    this.safeLog('info', `AI 優化錄音觸發鍵設為: ${triggerId || '停用'}`);
+    if (triggerValue && triggerValue.includes("+")) {
+      this.aiOptimizeCustom = this._parseAccelerator(triggerValue);
+      this.safeLog('info', `AI 優化錄音觸發鍵(自訂): ${triggerValue}${this.aiOptimizeCustom ? '' : ' (解析失敗)'}`);
+    } else {
+      this.aiOptimizeTriggerKeys = AI_OPTIMIZE_TRIGGER_PRESETS[triggerValue] || [];
+      this.safeLog('info', `AI 優化錄音觸發鍵: ${triggerValue || '停用'}`);
+    }
+  }
+
+  _parseAccelerator(accelerator) {
+    if (!accelerator || typeof accelerator !== 'string') return null;
+    const parts = accelerator.split('+').map((p) => p.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    const modifiers = { ctrl: false, shift: false, alt: false, meta: false };
+    const keyPart = parts.pop();
+    for (const p of parts) {
+      if (p === 'CommandOrControl' || p === 'Ctrl' || p === 'Control') modifiers.ctrl = true;
+      else if (p === 'Shift') modifiers.shift = true;
+      else if (p === 'Alt') modifiers.alt = true;
+      else if (p === 'Meta') modifiers.meta = true;
+    }
+    const keycode = _KEYCODE_BY_ACCELERATOR[keyPart];
+    if (keycode === undefined) return null;
+    return { keycode, modifiers };
+  }
+
+  _checkAiOptimizeTrigger(event) {
+    if (this.aiOptimizeCustom) {
+      const { keycode, modifiers } = this.aiOptimizeCustom;
+      if (event.keycode !== keycode) return false;
+      if (modifiers.ctrl !== (event.ctrlKey || false)) return false;
+      if (modifiers.shift !== (event.shiftKey || false)) return false;
+      if (modifiers.alt !== (event.altKey || false)) return false;
+      if (modifiers.meta !== (event.metaKey || false)) return false;
+      return true;
+    }
+    return this.aiOptimizeTriggerKeys.includes(event.keycode);
   }
 
   /**
