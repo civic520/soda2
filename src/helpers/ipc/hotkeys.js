@@ -677,14 +677,14 @@ module.exports = function register(ctx) {
   });
 
   // AI 優化錄音觸發鍵設定
-  ipcMain.handle("set-ai-optimize-trigger", async (event, triggerId) => {
+  ipcMain.handle("set-ai-optimize-trigger", async (event, triggerValue) => {
     try {
       if (!ctx.typelessManager) {
         return { success: false, error: "TypeLess 管理器未初始化" };
       }
-      ctx.typelessManager.setAiOptimizeTrigger(triggerId);
-      await ctx.databaseManager.setSetting('ai_optimize_trigger', triggerId);
-      ctx.logger.info(`AI 優化錄音觸發鍵設為: ${triggerId || '停用'}`);
+      ctx.typelessManager.setAiOptimizeTrigger(triggerValue);
+      await ctx.databaseManager.setSetting('ai_optimize_trigger', triggerValue);
+      ctx.logger.info(`AI 優化錄音觸發鍵設為: ${triggerValue || '停用'}`);
       return { success: true };
     } catch (error) {
       ctx.logger.error("設定 AI 優化錄音觸發鍵失敗:", error);
@@ -694,8 +694,8 @@ module.exports = function register(ctx) {
 
   ipcMain.handle("get-ai-optimize-trigger", async () => {
     try {
-      const triggerId = ctx.databaseManager.getSetting('ai_optimize_trigger', 'none');
-      return { success: true, triggerId };
+      const triggerValue = ctx.databaseManager.getSetting('ai_optimize_trigger', 'none');
+      return { success: true, triggerId: triggerValue };
     } catch (error) {
       return { success: false, error: error.message };
     }
