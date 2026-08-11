@@ -26,14 +26,13 @@ const AI_OPTIMIZE_TRIGGER_PRESETS = {
   f12: [UiohookKey.F12],
 };
 
-// accelerator 鍵名 → uiohook keycode（支援 A-Z、F1-F12、Space、方向鍵）
 function _buildKeycodeMap() {
   const map = {};
   for (let i = 65; i <= 90; i++) map[String.fromCharCode(i)] = UiohookKey[String.fromCharCode(i)];
   for (let i = 1; i <= 12; i++) map[`F${i}`] = UiohookKey[`F${i}`];
   map.Space = UiohookKey.Space;
-  map.Up = UiohookKey.Up; map.Down = UiohookKey.Down;
-  map.Left = UiohookKey.Left; map.Right = UiohookKey.Right;
+  map.Up = UiohookKey.ArrowUp; map.Down = UiohookKey.ArrowDown;
+  map.Left = UiohookKey.ArrowLeft; map.Right = UiohookKey.ArrowRight;
   map.Escape = UiohookKey.Escape;
   map.Enter = UiohookKey.Enter;
   map.Tab = UiohookKey.Tab;

@@ -39,6 +39,7 @@ class TypelessManagerStub {
       if (modifiers.ctrl !== (event.ctrlKey || false)) return false;
       if (modifiers.shift !== (event.shiftKey || false)) return false;
       if (modifiers.alt !== (event.altKey || false)) return false;
+      if (modifiers.meta !== (event.metaKey || false)) return false;
       return true;
     }
     return this.aiOptimizeTriggerKeys.includes(event.keycode);
@@ -70,6 +71,13 @@ test("checkAiOptimizeTrigger matches custom combo", () => {
   assert.equal(m._checkAiOptimizeTrigger({ keycode: 20, ctrlKey: true, shiftKey: false, altKey: true, metaKey: false }), true);
   assert.equal(m._checkAiOptimizeTrigger({ keycode: 20, ctrlKey: true, shiftKey: true, altKey: true, metaKey: false }), false);
   assert.equal(m._checkAiOptimizeTrigger({ keycode: 30, ctrlKey: true, shiftKey: false, altKey: true, metaKey: false }), false);
+});
+
+test("checkAiOptimizeTrigger requires meta when meta in combo", () => {
+  const m = new TypelessManagerStub();
+  m.setAiOptimizeTrigger("Ctrl+Shift+Alt+Meta+T");
+  assert.equal(m._checkAiOptimizeTrigger({ keycode: 20, ctrlKey: true, shiftKey: true, altKey: true, metaKey: true }), true);
+  assert.equal(m._checkAiOptimizeTrigger({ keycode: 20, ctrlKey: true, shiftKey: true, altKey: true, metaKey: false }), false);
 });
 
 test("checkAiOptimizeTrigger matches fixed key without modifiers", () => {
