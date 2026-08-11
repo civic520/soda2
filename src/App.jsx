@@ -723,6 +723,7 @@ export default function App() {
 
   // 統一的錄音狀態（根據模式選擇）
   const isRecording = streamingMode ? isRecordingStreaming : isRecordingNormal;
+  const isAiOptimizedRecording = isRecording && aiOptimizationEnabled;
   const isRecordingProcessing = streamingMode ? isProcessingStreaming : isRecordingProcessingNormal;
   const recordingError = streamingMode ? streamingError : recordingErrorNormal;
   // 同步錄音狀態到 ref（切換操作模式的「鬼切」判斷要讀最新值）
@@ -1664,10 +1665,20 @@ export default function App() {
         }`}
         style={{ WebkitAppRegion: 'drag' }}
       >
-        <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+        <div className={`relative shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
           isRecording ? (commandMode ? 'mini-capsule-icon-command animate-pulse' : (cloudAsrActive ? 'mini-capsule-icon-cloud animate-pulse' : 'mini-capsule-icon-recording animate-pulse')) : commandMode ? 'mini-capsule-icon-command-idle' : 'bg-gray-100 dark:bg-gray-800'
         }`}>
           {cloudAsrActive && isRecording && (<><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /></>)}
+          {isAiOptimizedRecording && (
+            <div className="ai-coin-burst">
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+            </div>
+          )}
           <img src="./icon.png" alt="" className="w-7 h-7 rounded-md relative z-10" draggable="false" />
         </div>
         <div className="flex-1 min-w-0">
