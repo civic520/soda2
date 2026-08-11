@@ -432,3 +432,7 @@ Fix unmute-on-stop failing despite `SetMute(0)` returning success — switch fro
 - `pnpm run build:native` — builds the Rust addon (requires Rust/Cargo)
 - `pnpm run build:renderer` — builds the React frontend
 - `cargo build --release` in `native/mute-native/` — direct Rust build
+## 實作執行偏好
+- 所有功能實作一律使用 Subagent-Driven Development（每個任務派發獨立 subagent，任務間審查，快速迭代）。
+- 不要反覆詢問執行方式；直接以 Subagent-Driven 執行。
+
