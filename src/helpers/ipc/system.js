@@ -109,7 +109,7 @@ module.exports = function register(ctx) {
     }
   });
 
-  // 變更模型目錄：選資料夾 → 移動已有模型 → 存設定
+  // 變更模型目錄：選資料夾 → 偵測待搬移模型 → 前端確認後由 confirm-migrate-models 執行
   ipcMain.handle("change-model-dir", async () => {
     const { dialog, app } = require("electron");
     const isPackaged = !!(app?.isPackaged);
@@ -120,7 +120,6 @@ module.exports = function register(ctx) {
     const currentCustom = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
     const oldDir = currentCustom || defaultDir;
 
-    // 開啟選資料夾對話框
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory", "createDirectory"],
       title: "選擇模型存放目錄",
@@ -131,7 +130,7 @@ module.exports = function register(ctx) {
     }
     const newDir = result.filePaths[0];
     if (newDir === oldDir) {
-      return { success: true, moved: false, message: "目錄未變更" };
+      return { success: true, moved: false, message: "目錄未變更", newDir };
     }
 
     // 確保新目錄存在
@@ -139,36 +138,75 @@ module.exports = function register(ctx) {
       fs.mkdirSync(newDir, { recursive: true });
     }
 
-    // 移動已有模型
-    const movedModels = [];
+    // 掃描舊目錄下可搬移的模型資料夾
+    const pendingModels = [];
     if (fs.existsSync(oldDir)) {
-      const entries = fs.readdirSync(oldDir);
-      for (const entry of entries) {
+      for (const entry of fs.readdirSync(oldDir)) {
         const srcPath = path.join(oldDir, entry);
         const destPath = path.join(newDir, entry);
         try {
           const stat = fs.statSync(srcPath);
           if (!stat.isDirectory()) continue;
-          if (fs.existsSync(destPath)) continue; // 目標已存在，跳過
+          if (fs.existsSync(destPath)) continue;
+          pendingModels.push(entry);
+        } catch (e) { /* 略過無法讀取的項目 */ }
+      }
+    }
+
+    if (pendingModels.length > 0) {
+      return { success: true, needConfirm: true, pendingModels, newDir };
+    }
+
+    // 無待搬移模型 → 直接儲存設定
+    if (ctx.databaseManager) {
+      ctx.databaseManager.setSetting("custom_model_dir", newDir);
+    }
+    if (ctx.sherpaManager) {
+      ctx.sherpaManager.modelsDownloaded = null;
+    }
+    return { success: true, moved: false, message: "目錄已變更（無需搬移模型）", newDir };
+  });
+
+  // 確認後搬移模型：doMigrate=true 搬移+儲存設定；false 僅儲存設定
+  ipcMain.handle("confirm-migrate-models", async (event, targetDir, doMigrate = true) => {
+    const { app } = require("electron");
+    const isPackaged = !!(app?.isPackaged);
+    const defaultDir = isPackaged
+      ? path.join(app.getPath("userData"), "models")
+      : path.join(__dirname, "..", "..", "..", "model");
+    const currentCustom = ctx.databaseManager ? ctx.databaseManager.getSetting("custom_model_dir", "") : "";
+    const oldDir = currentCustom || defaultDir;
+    const newDir = targetDir;
+
+    if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+
+    const movedModels = [];
+    const failedModels = [];
+    if (doMigrate && fs.existsSync(oldDir)) {
+      for (const entry of fs.readdirSync(oldDir)) {
+        const srcPath = path.join(oldDir, entry);
+        const destPath = path.join(newDir, entry);
+        try {
+          const stat = fs.statSync(srcPath);
+          if (!stat.isDirectory()) continue;
+          if (fs.existsSync(destPath)) continue;
           fs.renameSync(srcPath, destPath);
           movedModels.push(entry);
         } catch (e) {
-          ctx.logger && ctx.logger.warn && ctx.logger.warn(`模型移動失敗 ${entry}:`, e.message);
+          ctx.logger && ctx.logger.warn && ctx.logger.warn(`模型搬移失敗 ${entry}:`, e.message);
+          failedModels.push(entry);
         }
       }
     }
 
-    // 儲存設定
     if (ctx.databaseManager) {
       ctx.databaseManager.setSetting("custom_model_dir", newDir);
     }
-
-    // 清除 sherpaManager 的模型路徑快取
     if (ctx.sherpaManager) {
       ctx.sherpaManager.modelsDownloaded = null;
     }
 
-    return { success: true, moved: true, movedModels, newDir };
+    return { success: true, moved: movedModels.length > 0, movedModels, failedModels, newDir };
   });
 
   ipcMain.handle("open-external", (event, url) => {
