@@ -115,7 +115,7 @@ const SettingsPage = () => {
     auto_start_minimized: true,       // 開機自啟動時縮到托盤
     recording_sound_enabled: true,    // 錄音音效回饋
     sound_feedback_volume: 0.8,       // 音效回饋音量
-    sound_theme: 'marimba',           // 音效主題
+    sound_theme: 'coin01',            // 音效主題
     mute_while_recording: false,       // 錄音時靜音系統音訊
     app_theme: 'system'                // 應用主題
   });
@@ -609,7 +609,7 @@ const SettingsPage = () => {
             const v = Number(allSettings.sound_feedback_volume);
             return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
           })(),
-          sound_theme: allSettings.sound_theme || 'marimba',
+          sound_theme: allSettings.sound_theme || 'coin01',
           mute_while_recording: allSettings.mute_while_recording === true,
           app_theme: allSettings.app_theme || 'system',
           window_opacity: (() => {
@@ -698,7 +698,9 @@ const SettingsPage = () => {
 
   const handlePlayTestSound = async () => {
     try {
-      const res = await window.electronAPI?.playSound(settings.sound_theme === 'marimba' ? 'marimba_start' : 'rec_start');
+      const theme = settings.sound_theme || 'coin01';
+      const name = theme === 'marimba' ? 'marimba_start' : `${theme}_start`;
+      const res = await window.electronAPI?.playSound(name);
       if (!res?.data) return;
       await tryUnlock();
       await playBase64Sound(res.data, res.mimeType, settings.sound_feedback_volume);
@@ -1612,6 +1614,14 @@ const SettingsPage = () => {
                         className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       >
                         <option value="marimba">Marimba</option>
+                        <option value="coin01">Coin 01</option>
+                        <option value="coin02">Coin 02</option>
+                        <option value="coin03">Coin 03</option>
+                        <option value="coin05">Coin 05</option>
+                        <option value="coin06">Coin 06</option>
+                        <option value="coin07">Coin 07</option>
+                        <option value="coin08">Coin 08</option>
+                        <option value="pickup01">Pickup 01</option>
                       </select>
                     </div>
 
