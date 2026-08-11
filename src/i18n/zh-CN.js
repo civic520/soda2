@@ -381,6 +381,9 @@ export default {
         ctrlRight: '右 Ctrl',
         f11: 'F11',
         f12: 'F12',
+        custom: '自定义...',
+        pressKeys: '请按新的快捷键...',
+        recordingHint: '按下要使用的按键或组合键（例如 Ctrl+Alt+T）',
         tip: '与快速录音键（右 Alt/右 Ctrl）不冲突，可分配不同按键'
       }
     },

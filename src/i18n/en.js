@@ -381,6 +381,9 @@ export default {
         ctrlRight: 'Right Ctrl',
         f11: 'F11',
         f12: 'F12',
+        custom: 'Custom...',
+        pressKeys: 'Press new shortcut...',
+        recordingHint: 'Press the key or combo to use (e.g. Ctrl+Alt+T)',
         tip: 'Does not conflict with TypeLess trigger — assign different keys for each feature'
       }
     },

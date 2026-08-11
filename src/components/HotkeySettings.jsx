@@ -274,6 +274,8 @@ const HotkeySettings = () => {
   const [loading, setLoading] = useState(true);
   const [regStatus, setRegStatus] = useState(null);
   const [aiOptTrigger, setAiOptTrigger] = useState('none');
+  const [aiOptCustomRecording, setAiOptCustomRecording] = useState(false);
+  const [aiOptCustomValue, setAiOptCustomValue] = useState('');
 
   // 載入快捷鍵設定 + 註冊狀態 + AI 優化錄音觸發鍵
   useEffect(() => {
@@ -291,7 +293,12 @@ const HotkeySettings = () => {
           }
           const aiTrigger = await window.electronAPI.getAiOptimizeTrigger();
           if (aiTrigger.success && aiTrigger.triggerId) {
-            setAiOptTrigger(aiTrigger.triggerId);
+            if (aiTrigger.triggerId.includes('+')) {
+              setAiOptTrigger('custom');
+              setAiOptCustomValue(aiTrigger.triggerId);
+            } else {
+              setAiOptTrigger(aiTrigger.triggerId);
+            }
           }
         }
       } catch (err) {
@@ -388,7 +395,13 @@ const HotkeySettings = () => {
             onChange={async (e) => {
               const val = e.target.value;
               setAiOptTrigger(val);
-              await window.electronAPI.setAiOptimizeTrigger(val);
+              if (val === 'custom') {
+                setAiOptCustomRecording(true);
+                setAiOptCustomValue('');
+              } else {
+                setAiOptCustomRecording(false);
+                await window.electronAPI.setAiOptimizeTrigger(val);
+              }
             }}
             className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
           >
@@ -397,8 +410,37 @@ const HotkeySettings = () => {
             <option value="ctrlRight">{t('settings.hotkeysTab.aiOptimizeTrigger.ctrlRight')}</option>
             <option value="f11">{t('settings.hotkeysTab.aiOptimizeTrigger.f11')}</option>
             <option value="f12">{t('settings.hotkeysTab.aiOptimizeTrigger.f12')}</option>
+            <option value="custom">{t('settings.hotkeysTab.aiOptimizeTrigger.custom')}</option>
           </select>
         </div>
+        {aiOptCustomRecording && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                const acc = keyEventToAccelerator(e);
+                if (acc) { setAiOptCustomValue(acc); }
+              }}
+              onKeyDown={(e) => {
+                e.preventDefault();
+                const acc = keyEventToAccelerator(e);
+                if (acc) {
+                  setAiOptCustomValue(acc);
+                  setAiOptCustomRecording(false);
+                  setAiOptTrigger(acc);
+                  window.electronAPI.setAiOptimizeTrigger(acc);
+                }
+              }}
+              autoFocus
+              className="px-3 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-lg text-sm"
+            >
+              {aiOptCustomValue ? formatHotkey(aiOptCustomValue) : t('settings.hotkeysTab.aiOptimizeTrigger.pressKeys')}
+            </button>
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {t('settings.hotkeysTab.aiOptimizeTrigger.recordingHint')}
+            </p>
+          </div>
+        )}
         <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
           {t('settings.hotkeysTab.aiOptimizeTrigger.tip')}
         </p>
