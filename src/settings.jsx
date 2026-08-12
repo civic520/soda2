@@ -71,14 +71,13 @@ const LOCAL_ASR_MODELS = [
 
 // AI 模型商供應商清單（對應 yukey 的 PostProcessProvider）
 const AI_PROVIDERS = [
-  { id: 'openai',     label: 'OpenAI',     base_url: 'https://api.openai.com/v1' },
-  { id: 'google',     label: 'Google (Gemini)', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai' },
-  { id: 'anthropic',  label: 'Anthropic',  base_url: 'https://api.anthropic.com/v1' },
-  { id: 'openrouter', label: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1' },
-  { id: 'groq',       label: 'Groq',       base_url: 'https://api.groq.com/openai/v1' },
-  { id: 'cerebras',   label: 'Cerebras',   base_url: 'https://api.cerebras.ai/v1' },
-  { id: 'zai',        label: 'Z.AI',       base_url: 'https://api.z.ai/api/paas/v4' },
-  { id: 'bedrock_mantle', label: 'AWS Bedrock (Mantle)', base_url: 'https://bedrock-mantle.us-east-1.api.aws/v1' },
+  { id: 'openai',     label: 'OpenAI',     base_url: 'https://api.openai.com/v1', keyUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'google',     label: 'Google (Gemini)', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', keyUrl: 'https://aistudio.google.com/app/apikey' },
+  { id: 'anthropic',  label: 'Anthropic',  base_url: 'https://api.anthropic.com/v1', keyUrl: 'https://console.anthropic.com/settings/keys' },
+  { id: 'openrouter', label: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1', keyUrl: 'https://openrouter.ai/settings/keys' },
+  { id: 'groq',       label: 'Groq',       base_url: 'https://api.groq.com/openai/v1', keyUrl: 'https://console.groq.com/keys' },
+  { id: 'cerebras',   label: 'Cerebras',   base_url: 'https://api.cerebras.ai/v1', keyUrl: 'https://cloud.cerebras.ai/' },
+  { id: 'zai',        label: 'Z.AI',       base_url: 'https://api.z.ai/api/paas/v4', keyUrl: 'https://z.ai/manage-apikey/apikey-list' },
   { id: 'custom',     label: 'Custom',     base_url: 'http://localhost:11434/v1' },
 ];
 
@@ -2488,18 +2487,37 @@ const SettingsPage = () => {
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                    {t('settings.aiProvider')}
                  </label>
-                  <select
-                    value={selectedProviderId}
-                    onChange={(e) => {
-                      setSelectedProviderId(e.target.value);
-                      autoSaveAI();
-                    }}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  >
-                   {AI_PROVIDERS.map(p => (
-                     <option key={p.id} value={p.id}>{p.label}</option>
-                   ))}
-                 </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedProviderId}
+                      onChange={(e) => {
+                        setSelectedProviderId(e.target.value);
+                        autoSaveAI();
+                      }}
+                      className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                     {AI_PROVIDERS.map(p => (
+                       <option key={p.id} value={p.id}>{p.label}</option>
+                     ))}
+                    </select>
+                    {(() => {
+                      const provider = AI_PROVIDERS.find(p => p.id === selectedProviderId);
+                      if (!provider || !provider.keyUrl) return null;
+                      return (
+                        <a
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.electronAPI?.openExternal(provider.keyUrl);
+                          }}
+                          className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline whitespace-nowrap"
+                          title={provider.keyUrl}
+                        >
+                          {t('settings.getApiKey')} ↗
+                        </a>
+                      );
+                    })()}
+                  </div>
                </div>
 
                {/* API Key */}

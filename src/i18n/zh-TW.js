@@ -97,6 +97,7 @@ export default {
     apiKeyOptional: '選填（本地 LLM 免金鑰）',
     apiKeyDesc: '用於AI文字優化功能的API金鑰',
     aiProvider: 'AI 模型商',
+    getApiKey: '取得 API Key',
     fetchModels: '整理模型清單',
     availableModels: '可用模型（點選套用）',
     aiSetupHelp: '不知道怎麼設定？看教學',

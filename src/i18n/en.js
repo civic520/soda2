@@ -97,6 +97,7 @@ export default {
     apiKeyOptional: 'Optional (local LLM)',
     apiKeyDesc: 'API key used for AI text enhancement',
     aiProvider: 'AI Provider',
+    getApiKey: 'Get API Key',
     fetchModels: 'Fetch Models',
     availableModels: 'Available Models (click to select)',
     aiSetupHelp: 'Not sure how to set it up? See the guide',

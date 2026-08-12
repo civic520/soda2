@@ -14,7 +14,6 @@ const PROVIDER_DEFAULT_URLS = {
   groq: 'https://api.groq.com/openai/v1',
   cerebras: 'https://api.cerebras.ai/v1',
   zai: 'https://api.z.ai/api/paas/v4',
-  bedrock_mantle: 'https://bedrock-mantle.us-east-1.api.aws/v1',
   custom: 'http://localhost:11434/v1',
 };
 
