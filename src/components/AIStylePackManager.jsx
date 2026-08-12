@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Edit2, Trash2, RotateCcw, Check, CheckCircle, Save, Download, Upload, Sparkles, BookText, Tag, Shield, Info, HelpCircle, FileText } from "lucide-react";
+import { Plus, Edit2, Trash2, RotateCcw, Check, CheckCircle, Save, Sparkles, BookText, Tag, Shield, Info, HelpCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   DEFAULT_MAIN_PROMPT,
@@ -35,7 +35,6 @@ const AIStylePackManager = ({ t }) => {
     { name: t?.("settings.style.tabs.hotwords") || "熱詞", index: 2 },
     { name: t?.("settings.style.tabs.dicts") || "專業詞庫", index: 3 },
     { name: t?.("settings.style.tabs.customRules") || "自訂規則", index: 4 },
-    { name: t?.("settings.style.tabs.backup") || "備份與還原", index: 5 },
   ];
 
   // 載入設定
@@ -220,54 +219,6 @@ const AIStylePackManager = ({ t }) => {
     setCustomWords(updated);
     await applySettings(settings, updated);
     toast.success("熱詞已移除");
-  };
-
-  // 備份與還原
-  const handleExport = () => {
-    try {
-      const backupData = {
-        promptSettings: settings,
-        customWords: customWords,
-        exportedAt: new Date().toISOString()
-      };
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `soda2-stylepack-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("備份檔案匯出成功");
-    } catch (e) {
-      toast.error("匯出失敗: " + e.message);
-    }
-  };
-
-  const handleImport = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        if (data.promptSettings) {
-          const newSettings = { ...getDefaultStyleSettings(), ...data.promptSettings };
-          const newWords = Array.isArray(data.customWords) ? data.customWords : [];
-          setSettings(newSettings);
-          setCustomWords(newWords);
-          await applySettings(newSettings, newWords);
-          toast.success("風格包與設定還原成功！");
-        } else {
-          toast.error("無效的備份檔案格式");
-        }
-      } catch (err) {
-        toast.error("讀取備份檔案失敗: " + err.message);
-      }
-    };
-    reader.readAsText(file);
   };
 
   const getAvailableMainPrompts = () => {
@@ -715,37 +666,6 @@ const AIStylePackManager = ({ t }) => {
           </div>
         )}
 
-        {/* Tab 6: 備份與還原 */}
-        {activeTab === 5 && (
-          <div className="space-y-4 rounded-xl p-5 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700">
-            <div>
-              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
-                匯出備份與還原
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                將您所有的 AI 風格包設定（含自訂 Prompt、修飾模式與專業詞庫）與本地熱詞備份為 JSON 檔案，以方便移轉至其他電腦。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" /> 匯出設定備份檔
-              </button>
-              
-              <label className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer text-gray-700 dark:text-gray-200">
-                <Upload className="w-4 h-4" /> 匯入還原備份檔
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImport}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Editor Modal */}
