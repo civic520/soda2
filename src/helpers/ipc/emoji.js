@@ -1,4 +1,5 @@
 const { ipcMain } = require("electron");
+const { BUILTIN_EMOJI_MAP } = require("../emojiText");
 
 // 語音符號（內建 + 使用者自訂）。自訂存 DB 的 custom_emojis（JSON），
 // 並即時送進 Python 後端合併進辨識後處理（apply_emoji）。
@@ -14,11 +15,11 @@ module.exports = function register(ctx) {
     }
   } catch (e) { /* ignore */ }
 
-  // 內建符號對照表（給設定頁顯示，唯讀）
+  // 內建符號對照表（給設定頁顯示，唯讀）。直接讀 JS 版內建表，不依賴 sherpa server
+  // （GGUF 模式不啟動 sherpa，但符號表仍要顯示）。
   ipcMain.handle("get-builtin-emojis", async () => {
     try {
-      const res = await ctx.sherpaManager.getEmojiMap();
-      return { success: true, builtin: (res && res.builtin) || {} };
+      return { success: true, builtin: BUILTIN_EMOJI_MAP };
     } catch (e) {
       return { success: false, error: e.message, builtin: {} };
     }

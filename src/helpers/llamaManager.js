@@ -758,6 +758,17 @@ class LlamaManager {
 
       text = this._cleanAsrText(text);
 
+      // 語音符號：GGUF 模式不啟動 sherpa server，改在 JS 端套用（內建 + 自訂）
+      try {
+        const { applyEmoji } = require("./emojiText");
+        const customEmojis = this.databaseManager
+          ? this.databaseManager.getSetting("custom_emojis", {})
+          : {};
+        text = applyEmoji(text, customEmojis && typeof customEmojis === "object" ? customEmojis : {});
+      } catch (e) {
+        this.logger.warn && this.logger.warn("套用語音符號失敗:", e.message || e);
+      }
+
       // 中文序數轉阿拉伯數字（依設定，預設關）
       const convertOrdinalsEnabled = this.databaseManager
         ? this.databaseManager.getSetting("convert_ordinal_numbers", false)
