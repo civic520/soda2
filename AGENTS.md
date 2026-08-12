@@ -436,3 +436,14 @@ Fix unmute-on-stop failing despite `SetMute(0)` returning success — switch fro
 - 所有功能實作一律使用 Subagent-Driven Development（每個任務派發獨立 subagent，任務間審查，快速迭代）。
 - 不要反覆詢問執行方式；直接以 Subagent-Driven 執行。
 
+## 暫存檔/測試檔清理紀律（務必遵守）
+- 開發時產生的所有暫存檔、測試暫存目錄、臨時檔案，用完**必須立即清除**，不可殘留累積。
+- 測試檔中若建立臨時目錄（如 `fs.mkdtempSync`），必須用 `after()` / `t.after()` / `finally` 在測試結束後自動清除（參見 `test/llama-manager.test.js` 的 `makeTmp()` + `after()` 模式）。
+- 不要把大型假資料檔（如假 GGUF 模型檔）殘留在系統暫存目錄——這是過去把 C 槽塞爆 155GB 的教訓。
+- 每次功能開發完成後，檢查並清除：
+  - `%TEMP%` / `os.tmpdir()` 下自己建立的目錄
+  - 測試執行殘留的暫存
+  - `docs/` 之外的多餘暫存檔
+- 提交前用 `Get-ChildItem $env:TEMP` 檢查是否有自己產生的殘留目錄。
+
+
