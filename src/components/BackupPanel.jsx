@@ -12,10 +12,10 @@ const RESTORE_SCOPES = [
 const BackupPanel = ({ t }) => {
   const [clouds, setClouds] = useState([]);
   const [status, setStatus] = useState({ backup_cloud_dir: "", backup_auto_enable: false, backup_last_auto: null });
+  const [selectedId, setSelectedId] = useState("");
   const [selectedDir, setSelectedDir] = useState("");
   const [restoreScope, setRestoreScope] = useState("all");
   const [busy, setBusy] = useState(false);
-  const [expandedCloud, setExpandedCloud] = useState(null);
 
   const loadAll = async () => {
     const cloudsResult = await window.electronAPI?.backupDetectClouds?.();
@@ -23,28 +23,46 @@ const BackupPanel = ({ t }) => {
     const statusResult = await window.electronAPI?.backupGetStatus?.();
     if (statusResult) {
       setStatus(statusResult);
-      setSelectedDir(statusResult.backup_cloud_dir || "");
+      const dir = statusResult.backup_cloud_dir || "";
+      setSelectedDir(dir);
+      // 若已存的路徑對應某個已偵測雲端 → 選中它；否則顯示自選資料夾
+      const match = (cloudsResult || []).find(c => c.detected && c.path === dir);
+      setSelectedId(match ? match.id : (dir ? "__custom__" : ""));
     }
   };
 
   useEffect(() => { loadAll(); }, []);
 
-  const currentProvider = clouds.find(c => c.path === selectedDir) || null;
+  const selectedProvider = clouds.find(c => c.id === selectedId) || null;
+  const cloudReady = !!selectedDir;
 
   const pickFolder = async () => {
     const res = await window.electronAPI?.backupPickFolder?.();
     if (res?.success && res.path) {
       setSelectedDir(res.path);
+      setSelectedId("__custom__");
       await window.electronAPI?.backupSetConfig?.({ key: "backup_cloud_dir", value: res.path });
       setStatus(prev => ({ ...prev, backup_cloud_dir: res.path, backup_cloud_dir_valid: true }));
       toast.success(t("settings.backup.cloudSet"), { description: res.path });
     }
   };
 
-  const chooseCloud = async (cloud) => {
-    setSelectedDir(cloud.path);
-    await window.electronAPI?.backupSetConfig?.({ key: "backup_cloud_dir", value: cloud.path });
-    setStatus(prev => ({ ...prev, backup_cloud_dir: cloud.path, backup_cloud_dir_valid: true }));
+  const handleSelect = async (val) => {
+    setSelectedId(val);
+    if (val === "__custom__") { pickFolder(); return; }
+    if (val === "") {
+      setSelectedDir("");
+      return;
+    }
+    const cloud = clouds.find(c => c.id === val);
+    if (cloud && cloud.detected) {
+      setSelectedDir(cloud.path);
+      await window.electronAPI?.backupSetConfig?.({ key: "backup_cloud_dir", value: cloud.path });
+      setStatus(prev => ({ ...prev, backup_cloud_dir: cloud.path, backup_cloud_dir_valid: true }));
+    } else {
+      // 未安裝：不設定雲端資料夾，僅顯示引導
+      setSelectedDir("");
+    }
   };
 
   const doBackup = async () => {
@@ -89,6 +107,7 @@ const BackupPanel = ({ t }) => {
   };
 
   const toggleAuto = async () => {
+    if (!cloudReady) { toast.error(t("settings.backup.needCloud")); return; }
     const next = !status.backup_auto_enable;
     setStatus(prev => ({ ...prev, backup_auto_enable: next }));
     await window.electronAPI?.backupSetConfig?.({ key: "backup_auto_enable", value: next });
@@ -111,24 +130,21 @@ const BackupPanel = ({ t }) => {
         </label>
         <div className="flex items-center gap-2">
           <select
-            value={selectedDir}
-            onChange={(e) => {
-              const val = e.target.value;
-              const cloud = clouds.find(c => c.path === val);
-              if (val === "__custom__") { pickFolder(); return; }
-              setSelectedDir(val);
-              if (cloud) chooseCloud(cloud);
-              else if (val) window.electronAPI?.backupSetConfig?.({ key: "backup_cloud_dir", value: val });
-            }}
+            value={selectedId}
+            onChange={(e) => handleSelect(e.target.value)}
             className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           >
             <option value="">{t("settings.backup.noCloud")}</option>
             {clouds.map(c => (
-              <option key={c.id} value={c.path}>
-                {c.name} {c.detected ? "✅" : "⚠️"} — {c.path || (c.detected ? "" : t("settings.backup.notInstalled"))}
+              <option key={c.id} value={c.id}>
+                {c.name} {c.detected ? "✅" : "⚠️"} — {c.detected ? (c.path || "") : t("settings.backup.notInstalled")}
               </option>
             ))}
-            <option value="__custom__">{t("settings.backup.customFolder")}</option>
+            {selectedId === "__custom__" && selectedDir ? (
+              <option value="__custom__">{t("settings.backup.customFolder")} — {selectedDir}</option>
+            ) : (
+              <option value="__custom__">{t("settings.backup.customFolder")}</option>
+            )}
           </select>
           <button
             type="button"
@@ -141,22 +157,22 @@ const BackupPanel = ({ t }) => {
         </div>
 
         {/* 選中未安裝的雲端 → 引導 */}
-        {selectedDir && currentProvider && !currentProvider.detected && (
+        {selectedProvider && !selectedProvider.detected && (
           <div className="mt-3 p-3 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 mb-1">
               <AlertCircle className="w-4 h-4" />
-              <span className="text-xs font-medium">{t("settings.backup.guideTitle", { name: currentProvider.name })}</span>
+              <span className="text-xs font-medium">{t("settings.backup.guideTitle", { name: selectedProvider.name })}</span>
             </div>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">{t(currentProvider.installNoteKey || "settings.backupCloud.installNote.gdrive")}</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">{t(selectedProvider.installNoteKey || "settings.backupCloud.installNote.gdrive")}</p>
             <ol className="list-decimal list-inside space-y-1 text-xs text-amber-800 dark:text-amber-200 mb-2">
-              {(currentProvider.steps || []).map((stepKey, i) => (
+              {(selectedProvider.steps || []).map((stepKey, i) => (
                 <li key={i}>{t(stepKey)}</li>
               ))}
             </ol>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => window.electronAPI?.openExternal(currentProvider.downloadUrl)}
+                onClick={() => window.electronAPI?.openExternal(selectedProvider.downloadUrl)}
                 className="px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
               >
                 {t("settings.backup.download")} ↗
@@ -173,10 +189,10 @@ const BackupPanel = ({ t }) => {
           </div>
         )}
 
-        {selectedDir && currentProvider && currentProvider.detected && (
+        {selectedProvider && selectedProvider.detected && (
           <div className="mt-3 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs">
             <CheckCircle className="w-4 h-4" />
-            <span>{t("settings.backup.cloudReady", { path: selectedDir })}</span>
+            <span>{t("settings.backup.cloudReady", { path: selectedProvider.path })}</span>
           </div>
         )}
       </div>
@@ -188,7 +204,7 @@ const BackupPanel = ({ t }) => {
           <button
             type="button"
             onClick={doBackup}
-            disabled={busy || !selectedDir}
+            disabled={busy || !cloudReady}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
           >
             <UploadCloud className="w-4 h-4 inline mr-1" />
@@ -224,9 +240,10 @@ const BackupPanel = ({ t }) => {
               role="switch"
               aria-checked={status.backup_auto_enable}
               onClick={toggleAuto}
+              disabled={!cloudReady}
               className={`${
                 status.backup_auto_enable ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-              } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+              } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               <span
                 aria-hidden="true"
@@ -259,7 +276,7 @@ const BackupPanel = ({ t }) => {
         <button
           type="button"
           onClick={doRestore}
-          disabled={busy}
+          disabled={busy || !cloudReady}
           className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
           <Download className="w-4 h-4 inline mr-1" />
