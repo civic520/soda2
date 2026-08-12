@@ -2483,17 +2483,6 @@ const SettingsPage = () => {
                  </button>
                 </div>
 
-                {/* AI 優化快捷鍵說明 */}
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/50 dark:border-purple-800/30">
-                  <span className="text-purple-500 dark:text-purple-400 mt-0.5 shrink-0">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
-                  </span>
-                  <div className="text-xs text-purple-700 dark:text-purple-300 leading-relaxed">
-                    <p className="font-semibold mb-0.5">快捷錄音</p>
-                    <p>按住觸發鍵（如 Right Ctrl）開始錄音時，同時按住 <kbd className="px-1 py-0.5 bg-purple-100 dark:bg-purple-900/40 rounded text-[10px] font-mono">Shift</kbd> 即可暫時啟用 AI 優化。錄音停止後自動關閉，不影響手動開啟的 AI 優化設定。</p>
-                  </div>
-                </div>
-
                 {/* 模型商選擇 */}
                <div>
                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
