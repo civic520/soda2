@@ -723,6 +723,7 @@ class LlamaManager {
       // PoC 確認：input_audio.data 必須是純 base64（無 data: 前綴），format 用 wav
       const payload = JSON.stringify({
         messages: [
+          { role: "system", content: "You are an advanced multilingual Speech-to-Text model. Accurately transcribe the audio into text in its original spoken language. Preserve English words and proper nouns (brands, names, technical terms) exactly as spoken — do NOT transliterate them into Chinese. Ignore background noise, filler words, and stutters where possible, and format the final output with correct grammar and capitalization." },
           { role: "user", content: [
             { type: "text", text: "Transcribe the audio." },
             { type: "input_audio", input_audio: { data: b64, format: "wav" } },
