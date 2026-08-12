@@ -688,7 +688,10 @@ export default {
       doneSame: 'Re-transcribed (same result)',
       doneUpdated: 'Re-transcribed and updated',
       failed: 'Re-transcription failed'
-    }
+    },
+    exportDone: 'Exported {count} records',
+    exportEmpty: 'Nothing to export',
+    exportFailed: 'Export failed'
   },
 
   // Model status

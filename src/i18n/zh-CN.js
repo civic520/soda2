@@ -688,7 +688,10 @@ export default {
       doneSame: '已重新识别（结果相同）',
       doneUpdated: '已重新识别并更新',
       failed: '重新识别失败'
-    }
+    },
+    exportDone: '已导出 {count} 条记录',
+    exportEmpty: '没有可导出的记录',
+    exportFailed: '导出失败'
   },
 
   // 模型状态

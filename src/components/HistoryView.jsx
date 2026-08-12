@@ -231,6 +231,31 @@ export const HistoryView = () => {
     }
   };
 
+  const showToast = (msg, type = 'green') => {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    el.className = `fixed top-4 right-4 ${type === 'red' ? 'bg-red-500' : 'bg-green-500'} text-white px-4 py-2 rounded-lg shadow-lg z-50`;
+    document.body.appendChild(el);
+    setTimeout(() => { try { document.body.removeChild(el); } catch (e) {} }, 2000);
+  };
+
+  const handleExportText = async () => {
+    try {
+      const res = await window.electronAPI?.exportTranscriptions?.('txt');
+      if (!res) return;
+      if (res.canceled) return;
+      if (res.success) {
+        showToast(t('history.exportDone', { count: res.count }));
+      } else if (res.error === 'empty') {
+        showToast(t('history.exportEmpty'), 'red');
+      } else {
+        showToast(t('history.exportFailed'), 'red');
+      }
+    } catch (e) {
+      console.error("匯出失敗:", e);
+    }
+  };
+
   const loadTranscriptions = async () => {
     if (!window.electronAPI) return;
     setLoading(true);
@@ -370,7 +395,7 @@ export const HistoryView = () => {
             {t('history.total')}{filteredTranscriptions.length}{t('history.records')}
           </span>
           <button
-            onClick={() => { if (window.electronAPI) window.electronAPI.exportTranscriptions('txt'); }}
+            onClick={handleExportText}
             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
           >
             {t('app.export')}

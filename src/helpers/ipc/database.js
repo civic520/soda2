@@ -1,4 +1,5 @@
-const { ipcMain } = require("electron");
+const { ipcMain, dialog } = require("electron");
+const fs = require("fs");
 
 module.exports = function register(ctx) {
   // 数据库相关
@@ -93,9 +94,48 @@ module.exports = function register(ctx) {
 
   // =====================================================
   // 文件操作
-  ipcMain.handle("export-transcriptions", (event, format) => {
-    // TODO: 实现导出转录功能
-    return { success: true, path: "" };
+  ipcMain.handle("export-transcriptions", async (event, format) => {
+    try {
+      const entries = ctx.databaseManager.getTranscriptions(100000, 0);
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return { success: false, error: "empty" };
+      }
+
+      const fmt = format === "csv" ? "csv" : "txt";
+      const defaultName = `soda2-history-${new Date().toISOString().slice(0, 10)}.${fmt}`;
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: "匯出歷史記錄",
+        defaultPath: defaultName,
+        filters: fmt === "csv"
+          ? [{ name: "CSV 檔案", extensions: ["csv"] }]
+          : [{ name: "文字檔", extensions: ["txt"] }],
+      });
+      if (canceled || !filePath) return { success: false, canceled: true };
+
+      let content;
+      if (fmt === "csv") {
+        const header = "時間,內容\n";
+        const rows = entries.map((e) => {
+          const text = (e.processed_text || e.text || "").replace(/"/g, '""');
+          return `"${e.created_at || ""}","${text}"`;
+        });
+        content = header + rows.join("\n");
+      } else {
+        content = entries
+          .map((e) => {
+            const text = e.processed_text || e.text || "";
+            const time = e.created_at || "";
+            return time ? `${time}\n${text}` : text;
+          })
+          .join("\n\n---\n\n");
+      }
+
+      await fs.promises.writeFile(filePath, content, "utf8");
+      return { success: true, path: filePath, count: entries.length };
+    } catch (e) {
+      ctx.logger && ctx.logger.warn("匯出歷史記錄失敗:", e.message);
+      return { success: false, error: e.message || String(e) };
+    }
   });
 
   ipcMain.handle("import-settings", () => {

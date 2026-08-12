@@ -688,7 +688,10 @@ export default {
       doneSame: '已重新辨識（結果相同）',
       doneUpdated: '已重新辨識並更新',
       failed: '重新辨識失敗'
-    }
+    },
+    exportDone: '已匯出 {count} 筆記錄',
+    exportEmpty: '沒有可匯出的記錄',
+    exportFailed: '匯出失敗'
   },
 
   // 模型狀態
