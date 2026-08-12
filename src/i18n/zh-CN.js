@@ -526,6 +526,7 @@ export default {
     streamingInitializing: '流式启动中...',
     streamingRecognizing: '流式识别中...',
     recordingIndicator: '录音中...',
+    aiOptimizeRecording: 'AI 优化中...',
     miniMode: '迷你模式（缩到角落）',
     miniExpand: '展开面板',
     closeToTray: '收到托盘（不会关闭程序）',

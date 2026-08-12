@@ -526,6 +526,7 @@ export default {
     streamingInitializing: '串流啟動中...',
     streamingRecognizing: '串流辨識中...',
     recordingIndicator: '錄音中...',
+    aiOptimizeRecording: 'AI 優化中...',
     miniMode: '迷你模式（縮到角落）',
     miniExpand: '展開面板',
     closeToTray: '收到托盤（不會關閉程式）',

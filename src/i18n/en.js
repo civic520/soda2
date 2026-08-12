@@ -526,6 +526,7 @@ export default {
     streamingInitializing: 'Starting stream...',
     streamingRecognizing: 'Streaming recognition...',
     recordingIndicator: 'Recording...',
+    aiOptimizeRecording: 'AI Optimizing...',
     miniMode: 'Mini mode (dock to corner)',
     miniExpand: 'Expand panel',
     closeToTray: 'Hide to tray (app keeps running)',

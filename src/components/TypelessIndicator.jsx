@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "../i18n";
+import { indicatorClass } from "./typelessIndicatorLogic.cjs";
 
 /**
  * TypeLess 錄音指示器組件（講話時跳出來的「藥丸」）
@@ -10,6 +11,20 @@ const TypelessIndicator = () => {
   const { t } = useTranslation();
   const [commandMode, setCommandMode] = useState(false);
   const [cloudAsrActive, setCloudAsrActive] = useState(false);
+  const [aiOptimizeRecording, setAiOptimizeRecording] = useState(false);
+
+  useEffect(() => {
+    let unsubStart = null;
+    let unsubStop = null;
+    if (window.electronAPI) {
+      unsubStart = window.electronAPI.onAiOptimizeRecordingStart?.(() => setAiOptimizeRecording(true));
+      unsubStop = window.electronAPI.onAiOptimizeRecordingStop?.(() => setAiOptimizeRecording(false));
+    }
+    return () => {
+      if (typeof unsubStart === 'function') unsubStart();
+      if (typeof unsubStop === 'function') unsubStop();
+    };
+  }, []);
 
   useEffect(() => {
     let unsub = null;
@@ -50,20 +65,29 @@ const TypelessIndicator = () => {
     <div className="w-full h-full flex items-center justify-center">
       <div
         className={`pill-bounce backdrop-blur-sm rounded-full px-5 py-2 flex items-center gap-2.5 ${
-          commandMode
-            ? 'pill-command'
-            : cloudAsrActive
-              ? 'pill-cloud'
-              : 'pill-recording'
+          indicatorClass(aiOptimizeRecording, cloudAsrActive, commandMode)
         }`}
         >
           {cloudAsrActive && (<><div className="coin-particle" /><div className="coin-particle" /><div className="coin-particle" /></>)}
+          {/* AI 優化錄音：金幣煙火 */}
+          {aiOptimizeRecording && (
+            <div className="ai-coin-burst">
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+              <div className="ai-coin-particle" />
+            </div>
+          )}
           {/* 靜止白點（不跳動）*/}
         <div className="w-3 h-3 bg-white rounded-full" />
 
         {/* 文字 */}
         <span className="text-white font-semibold text-[15px] whitespace-nowrap tracking-wide">
-          {commandMode ? t("panel.commandListening") : t("panel.recordingIndicator")}
+          {aiOptimizeRecording
+            ? t("panel.aiOptimizeRecording")
+            : commandMode ? t("panel.commandListening") : t("panel.recordingIndicator")}
         </span>
 
         {/* 聲波動畫 */}

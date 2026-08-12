@@ -402,6 +402,28 @@
 }
 .pill-command { background-color: var(--pill-command-bg); border: 1px solid var(--pill-command-border); }
 
+/* AI 優化錄音藥丸：金色高亮 + 金幣煙火 */
+.pill-ai {
+  background: linear-gradient(135deg, #b8860b, #ffd700 50%, #f5a623);
+  background-size: 300% 300%;
+  animation: gold-shimmer 2.5s ease-in-out infinite, gold-glow 1.8s ease-in-out infinite;
+  border: 2px solid rgba(255, 215, 0, 0.6);
+  box-shadow: 0 0 18px rgba(255, 215, 0, 0.45);
+  position: relative;
+  overflow: visible;
+}
+.pill-ai .ai-coin-burst .ai-coin-particle {
+  width: 12px; height: 12px;
+}
+.pill-ai .ai-coin-burst .ai-coin-particle:nth-child(2),
+.pill-ai .ai-coin-burst .ai-coin-particle:nth-child(5) {
+  width: 10px; height: 10px;
+}
+.pill-ai .ai-coin-burst .ai-coin-particle:nth-child(3),
+.pill-ai .ai-coin-burst .ai-coin-particle:nth-child(6) {
+  width: 9px; height: 9px;
+}
+
 /* ==================== 迷你膠囊錄音圖標 — 跟隨主題變數 ==================== */
 .mini-capsule-icon-recording { background-color: var(--pill-recording-bg); }
 .mini-capsule-icon-cloud {
