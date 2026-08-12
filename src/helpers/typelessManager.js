@@ -90,12 +90,14 @@ class TypelessManager {
   /**
    * 設置回調函數
    */
-  setCallbacks({ onStartRecording, onStopRecording, onCancelRecording, onAiOptimizeEnable, onAiOptimizeDisable }) {
+  setCallbacks({ onStartRecording, onStopRecording, onCancelRecording, onAiOptimizeEnable, onAiOptimizeDisable, onAiOptimizeRecordingStart, onAiOptimizeRecordingStop }) {
     this.onStartRecording = onStartRecording;
     this.onStopRecording = onStopRecording;
     this.onCancelRecording = onCancelRecording;
     this.onAiOptimizeEnable = onAiOptimizeEnable || null;
     this.onAiOptimizeDisable = onAiOptimizeDisable || null;
+    this.onAiOptimizeRecordingStart = onAiOptimizeRecordingStart || null;
+    this.onAiOptimizeRecordingStop = onAiOptimizeRecordingStop || null;
     this.safeLog('info', 'TypeLess 回調函數已設置');
   }
 

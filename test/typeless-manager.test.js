@@ -28,8 +28,48 @@ const KEYCODE_BY_ACCELERATOR = {
 class TypelessManagerStub {
   constructor(platform = process.platform) {
     this.platform = platform;
+    this.isEnabled = true;
     this.aiOptimizeCustom = null;
     this.aiOptimizeTriggerKeys = [];
+    this.aiOptimizeRecordingActive = false;
+    this._aiOptTriggerHeld = false;
+    this._aiOptLastToggleTime = 0;
+    this.onStartRecording = null;
+    this.onStopRecording = null;
+    this.onCancelRecording = null;
+    this.onAiOptimizeEnable = null;
+    this.onAiOptimizeDisable = null;
+    this.onAiOptimizeRecordingStart = null;
+    this.onAiOptimizeRecordingStop = null;
+  }
+  setCallbacks({ onStartRecording, onStopRecording, onCancelRecording, onAiOptimizeEnable, onAiOptimizeDisable, onAiOptimizeRecordingStart, onAiOptimizeRecordingStop }) {
+    this.onStartRecording = onStartRecording;
+    this.onStopRecording = onStopRecording;
+    this.onCancelRecording = onCancelRecording;
+    this.onAiOptimizeEnable = onAiOptimizeEnable || null;
+    this.onAiOptimizeDisable = onAiOptimizeDisable || null;
+    this.onAiOptimizeRecordingStart = onAiOptimizeRecordingStart || null;
+    this.onAiOptimizeRecordingStop = onAiOptimizeRecordingStop || null;
+  }
+  // 簡化 handleKeyDown：僅模擬 AI 優化錄音觸發路徑（真實 typelessManager.js handleKeyDown）
+  handleKeyDown(event) {
+    if (!this.isEnabled) return;
+    if (!this._checkAiOptimizeTrigger(event)) return;
+    if (this._aiOptTriggerHeld && (Date.now() - this._aiOptLastToggleTime) < 600) return;
+    this._aiOptTriggerHeld = true;
+    this._aiOptLastToggleTime = Date.now();
+    if (this.aiOptimizeRecordingActive) {
+      this.aiOptimizeRecordingActive = false;
+      if (this.onAiOptimizeRecordingStop) this.onAiOptimizeRecordingStop();
+    } else {
+      this.aiOptimizeRecordingActive = true;
+      if (this.onAiOptimizeRecordingStart) this.onAiOptimizeRecordingStart();
+    }
+  }
+  handleKeyUp(event) {
+    if (!this.isEnabled) return;
+    if (!this._checkAiOptimizeTrigger(event)) return;
+    this._aiOptTriggerHeld = false;
   }
   // 從真實實作複製的解析與比對邏輯
   setAiOptimizeTrigger(triggerValue) {
@@ -177,4 +217,36 @@ test("checkAiOptimizeTrigger matches fixed key without modifiers", () => {
   const m = new TypelessManagerStub();
   m.setAiOptimizeTrigger("ctrlRight");
   assert.equal(m._checkAiOptimizeTrigger({ keycode: 3613, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false }), true);
+});
+
+// 回歸：真實 bug 是 setCallbacks 漏解構/儲存 onAiOptimizeRecordingStart/Stop，
+// 導致 AI 優化錄音觸發鍵偵測到但回呼不執行（錄音不啟動）。
+test("setCallbacks stores ai optimize recording callbacks and fires on trigger", () => {
+  const m = new TypelessManagerStub();
+  let startFired = false;
+  let stopFired = false;
+  m.setAiOptimizeTrigger("f12");
+  m.setCallbacks({
+    onStartRecording: () => {},
+    onStopRecording: () => {},
+    onCancelRecording: () => {},
+    onAiOptimizeEnable: () => {},
+    onAiOptimizeDisable: () => {},
+    onAiOptimizeRecordingStart: () => { startFired = true; },
+    onAiOptimizeRecordingStop: () => { stopFired = true; },
+  });
+  assert.equal(typeof m.onAiOptimizeRecordingStart, "function");
+  assert.equal(typeof m.onAiOptimizeRecordingStop, "function");
+
+  const f12Event = { keycode: 88, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+  m.handleKeyDown(f12Event);
+  assert.equal(m.aiOptimizeRecordingActive, true);
+  assert.equal(startFired, true);
+  assert.equal(stopFired, false);
+
+  m.handleKeyUp(f12Event);
+  m.handleKeyDown(f12Event);
+  assert.equal(m.aiOptimizeRecordingActive, false);
+  assert.equal(stopFired, true);
+  assert.equal(startFired, true);
 });
