@@ -7,6 +7,28 @@
 
 - （暫無）
 
+## [1.2.0] - 2026-08-12
+
+### 新增
+
+- AI 優化錄音金幣煙火動畫：畫面正下方的橢圓形膠囊（TypeLess 指示器）與右下角 mini-capsule 在 AI 優化錄音時顯示金色金幣煙火動畫
+- AI 優化錄音專屬音效：設定頁「音效」區新增「AI 優化錄音音效」子區塊（獨立開關 / 主題 / 音量 / 試聽），啟動與停止都用專屬音效
+- 備份與還原：新增設定分頁，可一鍵匯出所有自訂資料（主 prompt、修飾模式、專業詞庫、熱詞、字典、設定）為單一 JSON；支援可選範圍還原
+- 雲端同步資料夾備份：自動偵測本機雲端同步資料夾（OneDrive / Google Drive / Dropbox / Box / iCloud / Nextcloud），可設定引導安裝、立即備份到雲端、每日自動備份
+- AI 模型商「取得 API Key」連結：設定頁選擇模型商後可一鍵開啟該模型的 API key 取得頁面
+- 歷史記錄「匯出文字」按鈕實作（原本為 TODO）：可匯出所有記錄為 txt / csv
+
+### 修正
+
+- 修復 AI 優化錄音啟動音被截斷的問題（錄音時靜音系統音訊前先等音效播完）
+- 修復 Qwen3-ASR 1.7B 英文專有名詞（如 Google）被誤辨識成中文音譯（改善 transcribe system prompt）
+- 修復 GGUF 模式下語音符號（內建符號表與 apply_emoji）不生效（新增 JS 版語音符號）
+- 修復開發時測試殘留暫存檔塞爆 C 槽的問題（測試結束自動清理）
+- 移除 AI 風格包內重複的「備份與還原」tab（由新備份分頁取代）
+- 移除 AWS Bedrock 模型商（無免費額度）
+- 移除設定頁「快捷錄音」說明區塊
+- 共用工具改 ESM 防止 Vite dev server 因 .cjs import 崩潰
+
 ## [1.1.0] - 2026-08-10
 
 ### 新增
@@ -140,8 +162,10 @@ See [releases](https://github.com/Jeffrey0117/SpeakSlow/releases)。
 - 語音符號與表情插入
 - 錄音熱鍵：右 Alt / 右 Ctrl 一鍵切換錄音
 
-[unreleased]: https://github.com/Jeffrey0117/SpeakSlow/compare/v1.0.22...HEAD
-[1.0.22]: https://github.com/Jeffrey0117/SpeakSlow/releases/tag/v1.0.22
+[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/m45801ch/soda2/releases/tag/v1.2.0
+[1.1.0]: https://github.com/m45801ch/soda2/releases/tag/v1.1.0
+[1.0.22]: https://github.com/m45801ch/soda2/releases/tag/v1.0.22
 [1.0.14]: https://github.com/Jeffrey0117/SpeakSlow/releases/tag/v1.0.14
 [1.0.13]: https://github.com/Jeffrey0117/SpeakSlow/releases/tag/v1.0.13
 [1.0.12]: https://github.com/Jeffrey0117/SpeakSlow/releases/tag/v1.0.12
