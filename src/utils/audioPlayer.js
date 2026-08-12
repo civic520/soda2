@@ -36,7 +36,9 @@ export async function playBase64Sound(b64, mimeType, volume = 0.8) {
     gain.gain.value = Math.max(0, Math.min(1, volume));
     source.connect(gain).connect(ctx.destination);
     source.start(0);
+    return audioBuf.duration;
   } catch (e) {
     console.warn('playBase64Sound failed:', e);
+    return null;
   }
 }

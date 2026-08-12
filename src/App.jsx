@@ -774,10 +774,11 @@ export default function App() {
       console.log('[sound] playBeep calling IPC for:', name);
       const res = await window.electronAPI?.playSound(name);
       console.log('[sound] playBeep IPC result:', res ? `data=${res.data?.length}chars` : 'null');
-      if (res?.playedNatively || !res?.data) return;
-      await playBase64Sound(res.data, res.mimeType, soundFeedbackVolume);
+      if (res?.playedNatively || !res?.data) return null;
+      const duration = await playBase64Sound(res.data, res.mimeType, soundFeedbackVolume);
       console.log('[sound] playBeep completed');
-    } catch (e) { console.warn('[sound] playBeep error:', e); }
+      return duration;
+    } catch (e) { console.warn('[sound] playBeep error:', e); return null; }
   }, [recordingSoundEnabled, soundFeedbackVolume]);
 
   // AI 優化錄音提示音：獨立開關/主題/音量（不影響一般錄音音效）
@@ -788,22 +789,22 @@ export default function App() {
       console.log('[sound] playAiBeep calling IPC for:', name);
       const res = await window.electronAPI?.playSound(name);
       console.log('[sound] playAiBeep IPC result:', res ? `data=${res.data?.length}chars` : 'null');
-      if (res?.playedNatively || !res?.data) return;
-      await playBase64Sound(res.data, res.mimeType, aiSoundVolumeRef.current);
+      if (res?.playedNatively || !res?.data) return null;
+      const duration = await playBase64Sound(res.data, res.mimeType, aiSoundVolumeRef.current);
       console.log('[sound] playAiBeep completed');
-    } catch (e) { console.warn('[sound] playAiBeep error:', e); }
+      return duration;
+    } catch (e) { console.warn('[sound] playAiBeep error:', e); return null; }
   }, [aiSoundEnabled]);
 
   // 統一的錄音函數
   const startRecording = useCallback(async (options = {}) => {
     console.log('[mute-debug] startRecording called, muteWhileRecording=' + muteWhileRecording);
-    if (options.aiOptimize) {
-      await playAiBeep('start');
-    } else {
-      await playBeep('start');
-    }
-    // 等音效播放完畢再靜音，否則使用者聽不到啟動音
-    await new Promise(r => setTimeout(r, 200));
+    const duration = options.aiOptimize
+      ? await playAiBeep('start')
+      : await playBeep('start');
+    // 等啟動音效播完再靜音，否則音效會被 mute 切掉（muteSystemAudio 靜音整個系統）
+    const waitMs = duration && duration > 0 ? Math.ceil(duration * 1000) : 200;
+    await new Promise(r => setTimeout(r, waitMs));
     if (muteWhileRecording) {
       console.log('[mute-debug] calling muteSystemAudio(true)...');
       window.electronAPI?.muteSystemAudio(true).then(r => {
