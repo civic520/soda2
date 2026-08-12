@@ -4,11 +4,25 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { EventEmitter } = require("node:events");
+const { after } = require("node:test");
 
 const LlamaManager = require("../src/helpers/llamaManager");
 
+// 測試建立的暫存目錄一併清理，避免累積塞爆 C 槽
+const tmpDirs = [];
+after(() => {
+  for (const d of tmpDirs) {
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+  }
+});
+function makeTmp(prefix) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix || "soda2-llama-"));
+  tmpDirs.push(tmp);
+  return tmp;
+}
+
 test("llama model config exposes gguf required files", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-"));
+  const tmp = makeTmp("soda2-llama-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const config = manager.getModelConfig();
   assert.equal(config.name, "qwen3-asr-1.7b-gguf");
@@ -17,20 +31,20 @@ test("llama model config exposes gguf required files", () => {
 });
 
 test("llama model cache path resolves under userData/models", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-win-"));
+  const tmp = makeTmp("soda2-llama-win-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(manager.getModelCachePath(), path.join(tmp, "models", "qwen3-asr-1.7b-gguf"));
 });
 
 test("llama model cache path uses custom_model_dir when set and default absent", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-custom-"));
+  const tmp = makeTmp("soda2-llama-custom-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager.databaseManager = { getSetting: (k, d) => (k === "custom_model_dir" ? "E:\\Program Files\\soda2\\models" : d) };
   assert.equal(manager.getModelCachePath(), path.join("E:\\Program Files\\soda2\\models", "qwen3-asr-1.7b-gguf"));
 });
 
 test("llama model cache path stays in userData when default dir exists even with custom set", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-customexist-"));
+  const tmp = makeTmp("soda2-llama-customexist-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const defaultDir = path.join(tmp, "models", "qwen3-asr-1.7b-gguf");
   fs.mkdirSync(defaultDir, { recursive: true });
@@ -39,13 +53,13 @@ test("llama model cache path stays in userData when default dir exists even with
 });
 
 test("llama server binary path points at llama-server.exe on win32", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-bin-"));
+  const tmp = makeTmp("soda2-llama-bin-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(path.basename(manager.getLlamaServerPath()), "llama-server.exe");
 });
 
 test("checkModelFiles reports not downloaded when model dir missing", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-check-"));
+  const tmp = makeTmp("soda2-llama-check-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const result = await manager.checkModelFiles();
   assert.equal(result.success, true);
@@ -54,7 +68,7 @@ test("checkModelFiles reports not downloaded when model dir missing", async () =
 });
 
 test("checkModelFiles reports downloaded when gguf exists with size", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-check2-"));
+  const tmp = makeTmp("soda2-llama-check2-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const config = manager.getModelConfig();
   const dir = manager.getModelCachePath();
@@ -75,7 +89,7 @@ test("checkModelFiles reports downloaded when gguf exists with size", async () =
 });
 
 test("checkModelFiles reports missing files when model dir exists but gguf missing", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-check3-"));
+  const tmp = makeTmp("soda2-llama-check3-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const dir = manager.getModelCachePath();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -86,7 +100,7 @@ test("checkModelFiles reports missing files when model dir exists but gguf missi
 });
 
 test("getDownloadProgress returns zero progress when model dir exists but files missing", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-prog-"));
+  const tmp = makeTmp("soda2-llama-prog-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const dir = manager.getModelCachePath();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -96,7 +110,7 @@ test("getDownloadProgress returns zero progress when model dir exists but files 
 });
 
 test("ensureModelAvailable downloads missing gguf when model dir exists", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ensure-"));
+  const tmp = makeTmp("soda2-llama-ensure-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const dir = manager.getModelCachePath();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -119,14 +133,14 @@ test("ensureModelAvailable downloads missing gguf when model dir exists", async 
 });
 
 test("deleteModelFiles returns success when model directory does not exist", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-del-"));
+  const tmp = makeTmp("soda2-llama-del-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const result = await manager.deleteModelFiles();
   assert.deepEqual(result, { success: true });
 });
 
 test("downloadFile follows redirects with relative location", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-dl-"));
+  const tmp = makeTmp("soda2-llama-dl-");
   const dest = path.join(tmp, "out.bin");
   const calls = [];
   const fakeGet = (url, cb) => {
@@ -172,7 +186,7 @@ test("downloadFile follows redirects with relative location", async () => {
 });
 
 test("waitForServerReady polls the health endpoint", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-health-"));
+  const tmp = makeTmp("soda2-llama-health-");
   const calls = [];
   const fakeGet = (url, cb) => {
     calls.push(url);
@@ -187,7 +201,7 @@ test("waitForServerReady polls the health endpoint", async () => {
 });
 
 test("ensureFfmpegAvailable resolves when ffmpeg already in PATH", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ffmpeg-"));
+  const tmp = makeTmp("soda2-llama-ffmpeg-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager._findFfmpeg = async () => ({ success: true, ffmpegDir: "C:\\found" });
   const result = await manager.ensureFfmpegAvailable();
@@ -195,7 +209,7 @@ test("ensureFfmpegAvailable resolves when ffmpeg already in PATH", async () => {
 });
 
 test("startServer deduplicates concurrent calls (single spawn)", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-concurrent-"));
+  const tmp = makeTmp("soda2-llama-concurrent-");
   let spawnCount = 0;
   const fakeProc = new EventEmitter();
   fakeProc.kill = () => {};
@@ -216,7 +230,7 @@ test("startServer deduplicates concurrent calls (single spawn)", async () => {
 });
 
 test("startServer resets initializationPromise after failure so it can be retried", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-fail-"));
+  const tmp = makeTmp("soda2-llama-fail-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager.ensureLlamaBinary = async () => { throw new Error("boom"); };
   await assert.rejects(() => manager.startServer(), /boom/);
@@ -224,7 +238,7 @@ test("startServer resets initializationPromise after failure so it can be retrie
 });
 
 test("_persistAudio writes blob into userData/audio and returns the path", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-persist-"));
+  const tmp = makeTmp("soda2-llama-persist-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const blob = Buffer.from("RIFF-test-audio");
   const dest = manager._persistAudio(blob);
@@ -239,7 +253,7 @@ test("_persistAudio writes blob into userData/audio and returns the path", async
 });
 
 test("transcribeAudio returns null audio_path when save_audio disabled", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-nopersist-"));
+  const tmp = makeTmp("soda2-llama-nopersist-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager.serverReady = true;
   manager.databaseManager = { getSetting: (key, def) => (key === "save_audio" ? false : def) };
@@ -270,7 +284,7 @@ test("transcribeAudio returns null audio_path when save_audio disabled", async (
 });
 
 test("transcribeAudio persists audio_path when save_audio enabled", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-persist2-"));
+  const tmp = makeTmp("soda2-llama-persist2-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager.serverReady = true;
   const http = require("node:http");
@@ -305,7 +319,7 @@ test("transcribeAudio persists audio_path when save_audio enabled", async () => 
 });
 
 test("ensureLlamaBinary caps overall_progress at 50 for binary stage", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-binprog-"));
+  const tmp = makeTmp("soda2-llama-binprog-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager.downloadFile = async (url, dest, cb) => {
     cb({ downloaded: 100, total: 100, progress: 100 });
@@ -324,7 +338,7 @@ test("ensureLlamaBinary caps overall_progress at 50 for binary stage", async () 
 });
 
 test("ensureModelAvailable reports overall_progress in 50-100 range", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-modelprog-"));
+  const tmp = makeTmp("soda2-llama-modelprog-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   manager._forceDeletePath = () => {};
   const config = manager.getModelConfig();
@@ -348,7 +362,7 @@ test("ensureModelAvailable reports overall_progress in 50-100 range", async () =
 });
 
 test("checkModelFiles treats partial download as missing", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-partial-"));
+  const tmp = makeTmp("soda2-llama-partial-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   const dir = manager.getModelCachePath();
   await fs.promises.mkdir(dir, { recursive: true });
@@ -359,7 +373,7 @@ test("checkModelFiles treats partial download as missing", async () => {
 });
 
 test("cleanAsrText strips language prefix and asr_text markers", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-clean-"));
+  const tmp = makeTmp("soda2-llama-clean-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(
     manager._cleanAsrText("language Chinese<asr_text>大家好，這是測試。"),
@@ -377,14 +391,14 @@ test("cleanAsrText strips language prefix and asr_text markers", () => {
 });
 
 test("_convertOrdinals converts dianX sequences", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord-"));
+  const tmp = makeTmp("soda2-llama-ord-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(manager._convertOrdinals("一點一，一點二，一點三"), "1.1 1.2 1.3");
   assert.equal(manager._convertOrdinals("一點一，一點二"), "1.1 1.2");
 });
 
 test("_convertOrdinals converts comma list", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord2-"));
+  const tmp = makeTmp("soda2-llama-ord2-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(manager._convertOrdinals("一、開心；二、難過；三、高興。"), "1. 開心 2. 難過 3. 高興。");
   assert.equal(manager._convertOrdinals("一、二、三"), "1. 2. 3.");
@@ -392,7 +406,7 @@ test("_convertOrdinals converts comma list", () => {
 });
 
 test("_convertOrdinals leaves non-list text unchanged", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ord3-"));
+  const tmp = makeTmp("soda2-llama-ord3-");
   const manager = new LlamaManager(null, { platform: "win32", userDataPath: tmp, projectRoot: tmp });
   assert.equal(manager._convertOrdinals("好一點"), "好一點");
   assert.equal(manager._convertOrdinals("第一"), "第一");
@@ -403,7 +417,7 @@ test("_convertOrdinals leaves non-list text unchanged", () => {
 });
 
 test("startServer adds -ngl when acceleration resolves ngl true", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-ngl-"));
+  const tmp = makeTmp("soda2-llama-ngl-");
   let spawnedArgs = null;
   const fakeProc = new EventEmitter();
   fakeProc.kill = () => {};
@@ -430,7 +444,7 @@ test("startServer adds -ngl when acceleration resolves ngl true", async () => {
 });
 
 test("startServer omits -ngl when acceleration resolves ngl false", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "soda2-llama-nongl-"));
+  const tmp = makeTmp("soda2-llama-nongl-");
   let spawnedArgs = null;
   const fakeProc = new EventEmitter();
   fakeProc.kill = () => {};
