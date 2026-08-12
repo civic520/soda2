@@ -132,7 +132,7 @@ export default {
     backupCloud: {
       installNote: {
         onedrive: 'OneDrive 通常內建於 Windows。登入 Microsoft 帳戶後即會建立 OneDrive 資料夾。',
-        gdrive: '需要安裝「Google Drive for desktop」並登入 Google 帳戶，即會建立「Google Drive / My Drive」同步資料夾。',
+        gdrive: '需要安裝「Google Drive for desktop」並登入 Google 帳戶。串流模式會掛載成磁碟槽（如 G:），鏡像模式則建立「Google Drive / My Drive」同步資料夾。',
         dropbox: '需要安裝「Dropbox 桌面版」並登入，即會建立 Dropbox 同步資料夾。',
         box: '需要安裝「Box Drive」並登入 Box 帳戶，即會建立 Box 同步資料夾。',
         icloud: '需要安裝「iCloud for Windows」（Microsoft Store 下載）並登入 Apple 帳戶，開啟 iCloud Drive 後即會建立同步資料夾。',
@@ -143,8 +143,8 @@ export default {
         'onedrive.2': '登入你的 Microsoft 帳戶。',
         'onedrive.3': '確認 C:\\Users\\你\\OneDrive 資料夾已出現。',
         'gdrive.1': '從 Google 官網下載「Google Drive for desktop」並安裝。',
-        'gdrive.2': '登入你的 Google 帳戶，選擇串流或鏡像模式。',
-        'gdrive.3': '確認 C:\\Users\\你\\Google Drive（或 My Drive）資料夾已出現。',
+        'gdrive.2': '登入你的 Google 帳戶，選擇「串流」（Stream）或「鏡像」（Mirror）模式。',
+        'gdrive.3': '串流模式：確認「我的電腦」出現 Google Drive 磁碟槽（如 G:）；鏡像模式：確認 C:\\Users\\你\\Google Drive 資料夾已出現。',
         'dropbox.1': '從 Dropbox 官網下載並安裝 Dropbox 桌面版。',
         'dropbox.2': '登入你的 Dropbox 帳戶。',
         'dropbox.3': '確認 C:\\Users\\你\\Dropbox 資料夾已出現。',

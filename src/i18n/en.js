@@ -132,7 +132,7 @@ export default {
     backupCloud: {
       installNote: {
         onedrive: 'OneDrive is usually built into Windows. Sign in with your Microsoft account and the OneDrive folder will be created.',
-        gdrive: 'Install "Google Drive for desktop" and sign in with your Google account to create the "Google Drive / My Drive" sync folder.',
+        gdrive: 'Install "Google Drive for desktop" and sign in with your Google account. Stream mode mounts a drive letter (e.g. G:); Mirror mode creates the "Google Drive / My Drive" sync folder.',
         dropbox: 'Install the "Dropbox desktop app" and sign in to create the Dropbox sync folder.',
         box: 'Install "Box Drive" and sign in with your Box account to create the Box sync folder.',
         icloud: 'Install "iCloud for Windows" (from Microsoft Store) and sign in with your Apple account. Enable iCloud Drive to create the sync folder.',
@@ -144,7 +144,7 @@ export default {
         'onedrive.3': 'Confirm the C:\\Users\\you\\OneDrive folder appears.',
         'gdrive.1': 'Download and install "Google Drive for desktop" from Google.',
         'gdrive.2': 'Sign in with your Google account and choose Stream or Mirror mode.',
-        'gdrive.3': 'Confirm the C:\\Users\\you\\Google Drive (or My Drive) folder appears.',
+        'gdrive.3': 'Stream mode: confirm a Google Drive drive letter (e.g. G:) appears under This PC; Mirror mode: confirm the C:\\Users\\you\\Google Drive folder appears.',
         'dropbox.1': 'Download and install the Dropbox desktop app from dropbox.com.',
         'dropbox.2': 'Sign in with your Dropbox account.',
         'dropbox.3': 'Confirm the C:\\Users\\you\\Dropbox folder appears.',

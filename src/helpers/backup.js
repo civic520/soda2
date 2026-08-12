@@ -17,9 +17,14 @@ function buildBackupJson(databaseManager) {
 
 async function exportBackupToDir({ databaseManager, dir, filename }) {
   try {
-    await fs.promises.mkdir(dir, { recursive: true });
+    let targetDir = dir;
+    // 若目標是磁碟根目錄（如 G:\ 或 G:），自動放入 Soda2Backup 子資料夾，避免污染雲端根目錄
+    if (typeof dir === "string" && /^[A-Za-z]:[\\/]?$/.test(dir.trim())) {
+      targetDir = path.join(dir, "Soda2Backup");
+    }
+    await fs.promises.mkdir(targetDir, { recursive: true });
     const json = buildBackupJson(databaseManager);
-    const filePath = path.join(dir, filename);
+    const filePath = path.join(targetDir, filename);
     await fs.promises.writeFile(filePath, JSON.stringify(json, null, 2), "utf8");
     return { success: true, path: filePath };
   } catch (e) {

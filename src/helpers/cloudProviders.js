@@ -2,6 +2,42 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 
+// Google Drive for desktop 串流模式：掛載成磁碟機（如 G:），根目錄會有
+// "My Drive" / "我的雲端硬碟" 等資料夾。偵測磁碟根是否有這些標記。
+// 注意：不含英文 "Google Drive" —— 那是使用者可能自建的普通資料夾，容易誤判；
+// 真正的掛載磁碟根一定有 My Drive / 我的雲端硬碟 這類「雲端根」標記。
+const GOOGLE_DRIVE_MOUNT_MARKERS = ["My Drive", "我的雲端硬碟", "我的云端硬盘", "Mon Drive", "Mon espace Google Drive"];
+
+function findGoogleDriveMount() {
+  try {
+    const drives = [];
+    if (process.platform === "win32") {
+      for (let c = 67; c <= 90; c++) { // C: 到 Z:
+        const letter = String.fromCharCode(c);
+        const root = `${letter}:\\`;
+        if (fs.existsSync(root)) drives.push(root);
+      }
+    } else {
+      drives.push("/");
+    }
+    for (const root of drives) {
+      if (root.toUpperCase() === `${path.parse(os.homedir()).root}`.toUpperCase()) continue; // 跳過系統槽
+      try {
+        const entries = fs.readdirSync(root);
+        for (const marker of GOOGLE_DRIVE_MOUNT_MARKERS) {
+          if (entries.includes(marker)) {
+            // 回傳「My Drive / 我的雲端硬碟」資料夾本身（可寫），而非磁碟根（唯讀）
+            return path.join(root, marker);
+          }
+        }
+      } catch (e) { /* 磁碟不可讀則略過 */ }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
 const CLOUD_PROVIDERS = [
   {
     id: "onedrive",
@@ -55,7 +91,12 @@ const CLOUD_PROVIDERS = [
 
 function detectCloudFolders(providers) {
   const home = os.homedir();
+  const gdriveMount = findGoogleDriveMount();
   return providers.map((p) => {
+    // Google Drive：先找資料夾，找不到再找掛載磁碟
+    if (p.id === "gdrive" && gdriveMount) {
+      return { id: p.id, name: p.name, detected: true, path: gdriveMount, installNoteKey: p.installNote, steps: p.steps, downloadUrl: p.downloadUrl };
+    }
     for (const cand of p.folderCandidates) {
       const full = path.join(home, cand);
       if (fs.existsSync(full)) {
@@ -66,4 +107,4 @@ function detectCloudFolders(providers) {
   });
 }
 
-module.exports = { CLOUD_PROVIDERS, detectCloudFolders };
+module.exports = { CLOUD_PROVIDERS, detectCloudFolders, GOOGLE_DRIVE_MOUNT_MARKERS };
