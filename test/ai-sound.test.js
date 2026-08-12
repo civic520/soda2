@@ -1,6 +1,6 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const { resolveAiSoundName } = require("../src/utils/aiSound.cjs");
+import { strict as assert } from "node:assert";
+import test from "node:test";
+import { resolveAiSoundName } from "../src/utils/aiSound.js";
 
 test("resolveAiSoundName maps marimba to marimba start/stop", () => {
   assert.equal(resolveAiSoundName("marimba", "start"), "marimba_start");

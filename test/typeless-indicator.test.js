@@ -1,6 +1,6 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
-const { indicatorClass } = require("../src/components/typelessIndicatorLogic.cjs");
+import { strict as assert } from "node:assert";
+import test from "node:test";
+import { indicatorClass } from "../src/components/typelessIndicatorLogic.js";
 
 test("indicatorClass returns pill-recording when nothing special", () => {
   assert.equal(indicatorClass(false, false, false), "pill-recording");

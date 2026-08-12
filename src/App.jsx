@@ -16,7 +16,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import { ModelDownloadProgress } from "./components/ui/model-status-indicator";
 import { resolveStreamingModeAvailability } from "./utils/streamingModeSupport.mjs";
 import { playBase64Sound } from "./utils/audioPlayer";
-import { resolveAiSoundName } from "./utils/aiSound.cjs";
+import { resolveAiSoundName } from "./utils/aiSound.js";
 
 // 动态导入设置页面组件
 const SettingsPage = React.lazy(() => import('./settings.jsx').then(module => ({ default: module.SettingsPage })));

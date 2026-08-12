@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "../i18n";
-import { indicatorClass } from "./typelessIndicatorLogic.cjs";
+import { indicatorClass } from "./typelessIndicatorLogic.js";
 
 /**
  * TypeLess 錄音指示器組件（講話時跳出來的「藥丸」）
