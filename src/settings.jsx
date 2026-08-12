@@ -610,6 +610,12 @@ const SettingsPage = () => {
             return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
           })(),
           sound_theme: allSettings.sound_theme || 'coin01',
+          ai_sound_enabled: allSettings.ai_sound_enabled !== false,
+          ai_sound_theme: allSettings.ai_sound_theme || 'coin02',
+          ai_sound_volume: (() => {
+            const v = Number(allSettings.ai_sound_volume);
+            return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+          })(),
           mute_while_recording: allSettings.mute_while_recording === true,
           app_theme: allSettings.app_theme || 'system',
           window_opacity: (() => {
@@ -694,6 +700,22 @@ const SettingsPage = () => {
   const handleVolumeChange = async (value) => {
     setSettings(prev => ({ ...prev, sound_feedback_volume: value }));
     try { await window.electronAPI?.setSetting?.('sound_feedback_volume', value); } catch (e) { /* ignore */ }
+  };
+
+  const handleAiVolumeChange = async (value) => {
+    setSettings(prev => ({ ...prev, ai_sound_volume: value }));
+    try { await window.electronAPI?.setSetting?.('ai_sound_volume', value); } catch (e) { /* ignore */ }
+  };
+
+  const handlePlayAiTestSound = async () => {
+    try {
+      const theme = settings.ai_sound_theme || 'coin02';
+      const name = theme === 'marimba' ? 'marimba_start' : `${theme}_start`;
+      const res = await window.electronAPI?.playSound(name);
+      if (!res?.data) return;
+      await tryUnlock();
+      await playBase64Sound(res.data, res.mimeType, settings.ai_sound_volume);
+    } catch (e) { console.warn('AI test sound error:', e); }
   };
 
   const handlePlayTestSound = async () => {
@@ -1645,6 +1667,107 @@ const SettingsPage = () => {
                     </div>
                   </>
                 )}
+
+                {/* AI 優化錄音音效（獨立於一般錄音音效） */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {t('settings.aiSoundToggle')}
+                      </label>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {t('settings.aiSoundToggleDesc')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={settings.ai_sound_enabled}
+                      onClick={() => handleToggleChange('ai_sound_enabled', !settings.ai_sound_enabled)}
+                      className={`${
+                        settings.ai_sound_enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                      } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`${
+                          settings.ai_sound_enabled ? 'translate-x-4' : 'translate-x-0'
+                        } inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                      />
+                    </button>
+                  </div>
+
+                  {settings.ai_sound_enabled && (
+                    <>
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                            {t('settings.aiSoundVolume')}
+                          </label>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                            {Math.round(settings.ai_sound_volume * 100)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          {t('settings.aiSoundVolumeDesc')}
+                        </p>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={Math.round(settings.ai_sound_volume * 100)}
+                          onChange={(e) => handleAiVolumeChange(Number(e.target.value) / 100)}
+                          className="w-full slider-accent cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between mt-3">
+                        <div>
+                          <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                            {t('settings.aiSoundTheme')}
+                          </label>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {t('settings.aiSoundThemeDesc')}
+                          </p>
+                        </div>
+                        <select
+                          value={settings.ai_sound_theme}
+                          onChange={(e) => handleSettingChange('ai_sound_theme', e.target.value)}
+                          className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        >
+                          <option value="marimba">Marimba</option>
+                          <option value="coin01">Coin 01</option>
+                          <option value="coin02">Coin 02</option>
+                          <option value="coin03">Coin 03</option>
+                          <option value="coin05">Coin 05</option>
+                          <option value="coin06">Coin 06</option>
+                          <option value="coin07">Coin 07</option>
+                          <option value="coin08">Coin 08</option>
+                          <option value="pickup01">Pickup 01</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-3">
+                        <div>
+                          <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                            {t('settings.aiTestSound')}
+                          </label>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {t('settings.aiTestSoundDesc')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handlePlayAiTestSound}
+                          className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {t('settings.testSoundPlay')}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {/* 錄音時靜音系統音訊 */}
                 <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
