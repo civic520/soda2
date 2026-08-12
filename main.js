@@ -365,6 +365,37 @@ async function startApp() {
     logger.warn("開機自啟動設定同步失敗:", e.message);
   }
 
+  // 自動備份：若開啟且超過 24h 未備份，寫備份檔到雲端同步資料夾
+  try {
+    const autoBackup = databaseManager.getSetting('backup_auto_enable', false);
+    const cloudDir = databaseManager.getSetting('backup_cloud_dir', '');
+    if (autoBackup && cloudDir) {
+      const lastAuto = databaseManager.getSetting('backup_last_auto', null);
+      const now = Date.now();
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      if (!lastAuto || now - new Date(lastAuto).getTime() >= DAY_MS) {
+        const fs = require("fs");
+        const path = require("path");
+        if (fs.existsSync(cloudDir)) {
+          const { exportBackupToDir } = require("./src/helpers/backup");
+          const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+          const filename = `soda2-backup-${ts}.json`;
+          const result = await exportBackupToDir({ databaseManager, dir: cloudDir, filename });
+          if (result.success) {
+            databaseManager.setSetting('backup_last_auto', new Date(now).toISOString());
+            logger.info('自動備份完成:', result.path);
+          } else {
+            logger.warn('自動備份失敗:', result.error);
+          }
+        } else {
+          logger.warn('自動備份跳過：雲端資料夾不存在', cloudDir);
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn('自動備份失敗:', e.message || e);
+  }
+
   // 設置托盘
   logger.info('设置系统托盘...');
   trayManager.setWindows(

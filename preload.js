@@ -387,7 +387,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   playSound: (soundName) => ipcRenderer.invoke("play-sound", soundName),
 
   // 系統音訊靜音（錄音期間）
-  muteSystemAudio: (mute) => ipcRenderer.invoke("mute-system-audio", mute)
+  muteSystemAudio: (mute) => ipcRenderer.invoke("mute-system-audio", mute),
+
+  // 備份與還原
+  backupDetectClouds: () => ipcRenderer.invoke("backup-detect-clouds"),
+  backupExport: (payload) => ipcRenderer.invoke("backup-export", payload),
+  backupPickFolder: () => ipcRenderer.invoke("backup-pick-folder"),
+  backupPickFile: () => ipcRenderer.invoke("backup-pick-file"),
+  backupImport: (payload) => ipcRenderer.invoke("backup-import", payload),
+  backupGetStatus: () => ipcRenderer.invoke("backup-get-status"),
+  backupSetConfig: (payload) => ipcRenderer.invoke("backup-set-config", payload)
 });
 
 // 添加一些实用的常量

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { toast, Toaster } from "sonner";
-import { Settings, Eye, EyeOff, X, Loader2, TestTube, CheckCircle, XCircle, Mic, Shield, Globe, Keyboard, Sparkles, BookText, Tag, History, Info, Heart, Smile, Cpu, Download, Trash2, Play, WifiOff, Wifi, Radio, Palette, FolderOpen } from "lucide-react";
+import { Settings, Eye, EyeOff, X, Loader2, TestTube, CheckCircle, XCircle, Mic, Shield, Globe, Keyboard, Sparkles, BookText, Tag, History, Info, Heart, Smile, Cpu, Download, Trash2, Play, WifiOff, Wifi, Radio, Palette, FolderOpen, Database, UploadCloud, RefreshCw, HardDriveDownload } from "lucide-react";
 import { usePermissions } from "./hooks/usePermissions";
 import PermissionCard from "./components/ui/permission-card";
 import HotkeySettings from "./components/HotkeySettings";
@@ -10,6 +10,7 @@ import HotwordsManager from "./components/HotwordsManager";
 import DictionaryManager from "./components/DictionaryManager";
 import EmojiManager from "./components/EmojiManager";
 import HistoryView from "./components/HistoryView";
+import BackupPanel from "./components/BackupPanel";
 import { useTranslation, LanguageProvider } from "./i18n";
 import AIStylePackManager from "./components/AIStylePackManager";
 import { playBase64Sound, tryUnlock } from "./utils/audioPlayer";
@@ -26,6 +27,7 @@ const SETTINGS_TABS = [
   { id: 'dictionary', labelKey: 'settings.tabs.dictionary', icon: BookText },
   { id: 'emoji', labelKey: 'settings.tabs.emoji', icon: Smile },
   { id: 'permissions', labelKey: 'settings.tabs.permissions', icon: Shield },
+  { id: 'backup', labelKey: 'settings.tabs.backup', icon: Database },
   { id: 'about', labelKey: 'settings.tabs.about', icon: Info },
 ];
 
@@ -2756,6 +2758,10 @@ const SettingsPage = () => {
               <AIStylePackManager t={t} />
             </div>
           </div>
+            )}
+
+            {activeTab === 'backup' && (
+            <BackupPanel t={t} />
             )}
 
             {activeTab === 'about' && (

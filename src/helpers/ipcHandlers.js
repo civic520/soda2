@@ -29,6 +29,7 @@ class IPCHandlers {
     require("./ipc/hotkeys")(this);
     require("./ipc/system")(this);
     require("./ipc/emoji")(this);
+    require("./ipc/backup")(this);
     const soundModule = require("./ipc/sound");
     this.muteSystemAudioSync = soundModule.muteSystemAudioSync;
     soundModule(this);
