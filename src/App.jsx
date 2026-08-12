@@ -16,6 +16,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import { ModelDownloadProgress } from "./components/ui/model-status-indicator";
 import { resolveStreamingModeAvailability } from "./utils/streamingModeSupport.mjs";
 import { playBase64Sound } from "./utils/audioPlayer";
+import { resolveAiSoundName } from "./utils/aiSound.cjs";
 
 // 动态导入设置页面组件
 const SettingsPage = React.lazy(() => import('./settings.jsx').then(module => ({ default: module.SettingsPage })));
@@ -385,6 +386,11 @@ export default function App() {
   const [soundFeedbackVolume, setSoundFeedbackVolume] = useState(0.8);
   const [soundTheme, setSoundTheme] = useState('coin01');
   const soundThemeRef = useRef('coin01');
+  const [aiSoundEnabled, setAiSoundEnabled] = useState(true);
+  const [aiSoundTheme, setAiSoundTheme] = useState('coin02');
+  const [aiSoundVolume, setAiSoundVolume] = useState(0.8);
+  const aiSoundThemeRef = useRef('coin02');
+  const aiSoundVolumeRef = useRef(0.8);
   const [muteWhileRecording, setMuteWhileRecording] = useState(false);
 
   // 點擊錄音流程：等待使用者點擊目標位置
@@ -416,6 +422,17 @@ export default function App() {
         const soundTheme = await window.electronAPI.getSetting('sound_theme', 'coin01');
         setSoundTheme(soundTheme || 'coin01');
         soundThemeRef.current = soundTheme || 'coin01';
+
+        const aiSoundEn = await window.electronAPI.getSetting('ai_sound_enabled', true);
+        setAiSoundEnabled(aiSoundEn !== false);
+
+        const aiSoundTheme = await window.electronAPI.getSetting('ai_sound_theme', 'coin02');
+        setAiSoundTheme(aiSoundTheme || 'coin02');
+        aiSoundThemeRef.current = aiSoundTheme || 'coin02';
+
+        const aiSoundVol = Number(await window.electronAPI.getSetting('ai_sound_volume', 0.8));
+        aiSoundVolumeRef.current = Number.isFinite(aiSoundVol) ? Math.max(0, Math.min(1, aiSoundVol)) : 0.8;
+        setAiSoundVolume(aiSoundVolumeRef.current);
 
         const muteRec = await window.electronAPI.getSetting('mute_while_recording', false);
         setMuteWhileRecording(muteRec === true);
@@ -451,6 +468,16 @@ export default function App() {
         } else if (data.key === 'sound_theme') {
           setSoundTheme(data.value || 'coin01');
           soundThemeRef.current = data.value || 'coin01';
+        } else if (data.key === 'ai_sound_enabled') {
+          setAiSoundEnabled(data.value !== false);
+        } else if (data.key === 'ai_sound_theme') {
+          setAiSoundTheme(data.value || 'coin02');
+          aiSoundThemeRef.current = data.value || 'coin02';
+        } else if (data.key === 'ai_sound_volume') {
+          const v = Number(data.value);
+          const vol = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+          setAiSoundVolume(vol);
+          aiSoundVolumeRef.current = vol;
         } else if (data.key === 'mute_while_recording') {
           setMuteWhileRecording(data.value === true);
         } else if (data.key === 'app_theme') {
@@ -753,10 +780,28 @@ export default function App() {
     } catch (e) { console.warn('[sound] playBeep error:', e); }
   }, [recordingSoundEnabled, soundFeedbackVolume]);
 
+  // AI 優化錄音提示音：獨立開關/主題/音量（不影響一般錄音音效）
+  const playAiBeep = useCallback(async (type) => {
+    if (!aiSoundEnabled) { console.log('[sound] playAiBeep skipped: ai_sound_enabled=false'); return; }
+    const name = resolveAiSoundName(aiSoundThemeRef.current, type);
+    try {
+      console.log('[sound] playAiBeep calling IPC for:', name);
+      const res = await window.electronAPI?.playSound(name);
+      console.log('[sound] playAiBeep IPC result:', res ? `data=${res.data?.length}chars` : 'null');
+      if (res?.playedNatively || !res?.data) return;
+      await playBase64Sound(res.data, res.mimeType, aiSoundVolumeRef.current);
+      console.log('[sound] playAiBeep completed');
+    } catch (e) { console.warn('[sound] playAiBeep error:', e); }
+  }, [aiSoundEnabled]);
+
   // 統一的錄音函數
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (options = {}) => {
     console.log('[mute-debug] startRecording called, muteWhileRecording=' + muteWhileRecording);
-    await playBeep('start');
+    if (options.aiOptimize) {
+      await playAiBeep('start');
+    } else {
+      await playBeep('start');
+    }
     // 等音效播放完畢再靜音，否則使用者聽不到啟動音
     await new Promise(r => setTimeout(r, 200));
     if (muteWhileRecording) {
@@ -770,9 +815,9 @@ export default function App() {
     } else {
       startRecordingNormal();
     }
-  }, [streamingMode, startStreaming, startRecordingNormal, playBeep, muteWhileRecording]);
+  }, [streamingMode, startStreaming, startRecordingNormal, playBeep, playAiBeep, muteWhileRecording]);
 
-  const stopRecording = useCallback(async () => {
+  const stopRecording = useCallback(async (options = {}) => {
     console.log('[mute-debug] stopRecording called, muteWhileRecording=' + muteWhileRecording);
     if (muteWhileRecording) {
       console.log('[mute-debug] calling muteSystemAudio(false)...');
@@ -782,7 +827,11 @@ export default function App() {
     }
     // 注意：AI 優化設定不能在這裡清除！processAudio 需要讀取 setSetting 的值
     // 清除邏輯已移到 handleAIOptimizationComplete（轉錄完成後才清除）
-    await playBeep('stop');
+    if (options.aiOptimize) {
+      await playAiBeep('stop');
+    } else {
+      await playBeep('stop');
+    }
     // 等音效播完再停止錄音
     await new Promise(r => setTimeout(r, 200));
     if (streamingMode) {
@@ -792,7 +841,7 @@ export default function App() {
     }
     // 通知主進程錄音已停止（隱藏藥丸視窗）
     try { window.electronAPI?.notifyRecordingStopped?.(); } catch (e) { /* ignore */ }
-  }, [streamingMode, stopStreaming, stopRecordingNormal, playBeep, muteWhileRecording]);
+  }, [streamingMode, stopStreaming, stopRecordingNormal, playBeep, playAiBeep, muteWhileRecording]);
 
   const {
     processText,
@@ -1339,12 +1388,12 @@ export default function App() {
           setAiOptimizationEnabled(true);
           window.electronAPI?.setSetting('enable_ai_optimization', true).catch(() => {});
         }
-        startRecording();
+        startRecording({ aiOptimize: true });
       });
 
       const unsubscribeAiOptRecStop = window.electronAPI.onAiOptimizeRecordingStop?.(() => {
         console.log('AI 優化錄音 (uiohook): 停止');
-        stopRecording();
+        stopRecording({ aiOptimize: true });
       });
 
       return () => {
@@ -1357,7 +1406,7 @@ export default function App() {
         if (unsubscribeAiOptRecStop) unsubscribeAiOptRecStop();
       };
     }
-  }, [toggleRecording, handleCancelRecording, handleCopyLastResult, stopRecording, showNotification, t]);
+  }, [toggleRecording, handleCancelRecording, handleCopyLastResult, stopRecording, showNotification, t, startRecording, playAiBeep]);
 
   // 使用 Ref 避免 TypeLess 事件監聽器發生 stale closure (閉包過期) 導致無法停止或重設的問題
   const isRecordingNormalRef = React.useRef(false);
