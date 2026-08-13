@@ -7,18 +7,12 @@
 
 - （暫無）
 
-## [1.2.2] - 2026-08-13
-
-### 修正
-
-- 修復安裝到 Program Files 時麥克風失效（錄音錄到靜音、無文字輸出、音量測試無反應）的問題：Windows 會限制 Program Files 下的應用存取麥克風。安裝檔新增提醒，建議改用使用者目錄安裝；並加入麥克風裝置權限處理器
-- 新增錄音裝置與 getUserMedia 診斷日誌，方便排查麥克風問題
-
 ## [1.2.1] - 2026-08-13
 
 ### 修正
 
-- 修復打包版麥克風無反應問題的診斷與嘗試（新增媒體權限允許）
+- 修復打包版麥克風靜音問題（錄音錄到靜音、無文字輸出、音量測試無反應）：根因為第三方防毒軟體（Avast）攔截新 exe 的麥克風存取，非程式 bug。恢復 Chromium 默認權限處理（移除 media 權限攔截）
+- 新增錄音裝置與 getUserMedia / AudioContext / 採集峰值診斷日誌，方便日後排查麥克風問題
 
 ## [1.2.0] - 2026-08-12
 
@@ -175,8 +169,7 @@ See [releases](https://github.com/Jeffrey0117/SpeakSlow/releases)。
 - 語音符號與表情插入
 - 錄音熱鍵：右 Alt / 右 Ctrl 一鍵切換錄音
 
-[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.2...HEAD
-[1.2.2]: https://github.com/m45801ch/soda2/releases/tag/v1.2.2
+[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.1...HEAD
 [1.2.1]: https://github.com/m45801ch/soda2/releases/tag/v1.2.1
 [1.2.0]: https://github.com/m45801ch/soda2/releases/tag/v1.2.0
 [1.1.0]: https://github.com/m45801ch/soda2/releases/tag/v1.1.0
