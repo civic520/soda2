@@ -191,6 +191,13 @@ export const useRecording = (modelStatus) => {
       streamRef.current = stream;
       pcmBufferRef.current = [];
 
+      // 診斷：記錄 getUserMedia 結果，確認打包版是否拿到有效音軌
+      try {
+        const tracks = stream.getAudioTracks() || [];
+        const trackState = tracks.map((t) => `state=${t.readyState} muted=${t.muted} enabled=${t.enabled}`).join(';');
+        if (window.electronAPI?.log) window.electronAPI.log('info', `🎤 getUserMedia 診斷: tracks=${tracks.length} ${trackState} label=${tracks[0]?.label || '(無)'}`);
+      } catch (e) { /* ignore */ }
+
       // 記錄實際使用的麥克風裝置（協助確認收音來源）
       try {
         const micTrack = stream.getAudioTracks()[0];

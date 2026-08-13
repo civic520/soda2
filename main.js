@@ -204,9 +204,18 @@ async function startApp() {
   // 允許麥克風/媒體權限：打包版（NSIS）若未設 permission handler，
   // getUserMedia 的 media 權限可能被默認拒絕 → 錄音錄到靜音、音量測試無反應。
   try {
+    const allowMedia = (permission) => permission === "media" || permission === "mediaKeySystem";
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      callback(permission === "media" || permission === "mediaKeySystem");
+      callback(allowMedia(permission));
     });
+    // 打包版權限「預檢查」也需允許，否則 Chromium 在真正請求前就擋掉 media。
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => allowMedia(permission));
+    // 明確允許麥克風裝置（Electron 專用：media device 權限）
+    if (session.defaultSession.setDevicePermissionHandler) {
+      session.defaultSession.setDevicePermissionHandler((details) => {
+        return details.deviceType === "audioinput" || details.deviceType === "audiooutput";
+      });
+    }
   } catch (e) {
     logger.warn("設定麥克風權限處理器失敗:", e.message || e);
   }
