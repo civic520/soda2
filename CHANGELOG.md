@@ -7,6 +7,12 @@
 
 - （暫無）
 
+## [1.2.2] - 2026-08-13
+
+### 修正
+
+- 修復語音符號誤觸發：講到常見字（如「車」「火」）會被自動替換成符號。改為需「名稱＋表情/符號/emoji」後綴才觸發（與 sherpa 內建行為一致），例如「汽車表情」→🚗、「句號符號」→。
+
 ## [1.2.1] - 2026-08-13
 
 ### 修正
@@ -169,7 +175,8 @@ See [releases](https://github.com/Jeffrey0117/SpeakSlow/releases)。
 - 語音符號與表情插入
 - 錄音熱鍵：右 Alt / 右 Ctrl 一鍵切換錄音
 
-[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.1...HEAD
+[unreleased]: https://github.com/m45801ch/soda2/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/m45801ch/soda2/releases/tag/v1.2.2
 [1.2.1]: https://github.com/m45801ch/soda2/releases/tag/v1.2.1
 [1.2.0]: https://github.com/m45801ch/soda2/releases/tag/v1.2.0
 [1.1.0]: https://github.com/m45801ch/soda2/releases/tag/v1.1.0
