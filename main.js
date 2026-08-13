@@ -201,23 +201,11 @@ let ipcHandlers = null;
 
 // 主应用启动函数
 async function startApp() {
-  // 麥克風權限：不要攔截 media 權限（自動允許會繞過 Windows 系統權限請求，
-  // 導致新安裝的 exe 永遠無法取得系統麥克風授權 → getUserMedia 拿到 live 但系統層靜音）。
-  // 維持 Chromium 默認行為（與 dev 相同）：首次使用會觸發 Windows 麥克風權限授權。
-  try {
-    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      callback(true);
-    });
-    // 讓 Chromium 觸發系統麥克風權限：Electron 對 media 需明確允許後，
-      // Windows 會在首次 getUserMedia 時彈出系統麥克風權限窗。
-      if (session.defaultSession.setDevicePermissionHandler) {
-        session.defaultSession.setDevicePermissionHandler((details) => {
-          return true;
-        });
-      }
-  } catch (e) {
-    logger.warn("設定麥克風權限處理器失敗:", e.message || e);
-  }
+  // 麥克風權限：交由 Chromium/Windows 默認處理（與 dev 一致）。
+  // 切勿註冊 setPermissionRequestHandler 攔截 media —— 那會繞過 Windows 對
+  // 每個 exe 的系統麥克風授權，導致新安裝的 exe 拿到 live 但系統層靜音的 stream。
+  // （Windows 按 exe 記錄麥克風權限；首次 getUserMedia 需彈系統授權窗，
+  //   攔截 handler 會吞掉這個流程。）
 
   // Content-Security-Policy
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
