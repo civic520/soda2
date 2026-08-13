@@ -755,6 +755,7 @@ class LlamaManager {
       } else {
         throw new Error(`llama-server 轉錄失敗 HTTP ${response.status}: ${response.body.slice(0, 200)}`);
       }
+      this.logger.info && this.logger.info("llama-server 轉錄原始回應", { status: response.status, bodyLen: response.body.length, textLen: text.length, textPreview: String(text).slice(0, 80) });
 
       text = this._cleanAsrText(text);
 
