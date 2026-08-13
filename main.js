@@ -201,6 +201,16 @@ let ipcHandlers = null;
 
 // 主应用启动函数
 async function startApp() {
+  // 允許麥克風/媒體權限：打包版（NSIS）若未設 permission handler，
+  // getUserMedia 的 media 權限可能被默認拒絕 → 錄音錄到靜音、音量測試無反應。
+  try {
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(permission === "media" || permission === "mediaKeySystem");
+    });
+  } catch (e) {
+    logger.warn("設定麥克風權限處理器失敗:", e.message || e);
+  }
+
   // Content-Security-Policy
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
