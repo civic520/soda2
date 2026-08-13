@@ -226,11 +226,19 @@ export const useRecording = (modelStatus) => {
       // 創建 AudioContext（使用預設採樣率，讓瀏覽器自動處理）
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       audioContextRef.current = audioContext;
+      // 診斷：記錄 AudioContext 建構後狀態與採樣率
+      try {
+        if (window.electronAPI?.log) window.electronAPI.log('info', `🎤 AudioContext 建構: sampleRate=${audioContext.sampleRate} state=${audioContext.state}`);
+      } catch (e) { /* ignore */ }
 
       // 確保 AudioContext 是活躍的
       if (audioContext.state === 'suspended') {
         await audioContext.resume();
       }
+      // 診斷：resume 後狀態
+      try {
+        if (window.electronAPI?.log) window.electronAPI.log('info', `🎤 AudioContext resume 後: state=${audioContext.state}`);
+      } catch (e) { /* ignore */ }
 
       // 如果在 resume 途中被 stop，放棄
       if (startCancelledRef.current) {
@@ -247,11 +255,26 @@ export const useRecording = (modelStatus) => {
       const bufferSize = 4096;
       const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
       processorRef.current = processor;
+      // 診斷：記錄採集到的 sample 峰值（確認是否真的收到聲音）
+      let peakLogTimer = null;
+      let maxPeak = 0;
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         // 複製數據到緩衝區
         pcmBufferRef.current.push(new Float32Array(inputData));
+        for (let i = 0; i < inputData.length; i++) {
+          const a = Math.abs(inputData[i]);
+          if (a > maxPeak) maxPeak = a;
+        }
+        if (!peakLogTimer) {
+          peakLogTimer = setTimeout(() => {
+            try {
+              if (window.electronAPI?.log) window.electronAPI.log('info', `🎤 採集峰值診斷: maxPeak=${maxPeak.toFixed(4)} (0=靜音)`);
+            } catch (e2) { /* ignore */ }
+            peakLogTimer = null;
+          }, 1000);
+        }
       };
 
       source.connect(processor);
