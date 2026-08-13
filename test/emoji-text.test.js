@@ -7,22 +7,22 @@ test("applyEmoji replaces emoji words with 表情 suffix", () => {
   assert.equal(applyEmoji("我笑死符號"), "我🤣");
 });
 
-test("applyEmoji replaces bare emoji words", () => {
-  assert.equal(applyEmoji("笑死"), "🤣");
-  assert.equal(applyEmoji("比讚"), "👍");
+test("applyEmoji replaces bare emoji words ONLY with 符號/表情/emoji suffix", () => {
+  assert.equal(applyEmoji("笑死符號"), "🤣");
+  assert.equal(applyEmoji("比讚表情"), "👍");
 });
 
-test("applyEmoji replaces punctuation words", () => {
-  assert.equal(applyEmoji("句號"), "。");
-  assert.equal(applyEmoji("逗號"), "，");
-  assert.equal(applyEmoji("頓號"), "、");
-  assert.equal(applyEmoji("問號"), "？");
+test("applyEmoji replaces punctuation words with 符號 suffix", () => {
+  assert.equal(applyEmoji("句號符號"), "。");
+  assert.equal(applyEmoji("逗號符號"), "，");
+  assert.equal(applyEmoji("頓號符號"), "、");
+  assert.equal(applyEmoji("問號符號"), "？");
 });
 
-test("applyEmoji replaces paired brackets", () => {
-  assert.equal(applyEmoji("書名號"), "《》");
-  assert.equal(applyEmoji("引號"), "「」");
-  assert.equal(applyEmoji("括號"), "（）");
+test("applyEmoji replaces paired brackets with 符號 suffix", () => {
+  assert.equal(applyEmoji("書名號符號"), "《》");
+  assert.equal(applyEmoji("引號符號"), "「」");
+  assert.equal(applyEmoji("括號符號"), "（）");
 });
 
 test("applyEmoji handles 錶 misrecognition and trailing punctuation", () => {
@@ -31,7 +31,16 @@ test("applyEmoji handles 錶 misrecognition and trailing punctuation", () => {
 });
 
 test("applyEmoji custom map overrides builtin", () => {
-  assert.equal(applyEmoji("笑死", { "笑死": "X" }), "X");
+  assert.equal(applyEmoji("笑死符號", { "笑死": "X" }), "X");
+});
+
+test("applyEmoji does NOT replace bare common words (no 符號/表情 suffix)", () => {
+  assert.equal(applyEmoji("車"), "車");
+  assert.equal(applyEmoji("我今天開車去上班"), "我今天開車去上班");
+  assert.equal(applyEmoji("火"), "火");
+  assert.equal(applyEmoji("句號"), "句號");
+  assert.equal(applyEmoji("笑死"), "笑死");
+  assert.equal(applyEmoji("書名號"), "書名號");
 });
 
 test("applyEmoji leaves unknown text unchanged", () => {

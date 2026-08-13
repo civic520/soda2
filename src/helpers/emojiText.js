@@ -110,11 +110,12 @@ function escapeRegExp(str) {
 
 function buildEmojiRegex(keys) {
   const sorted = keys.slice().sort((a, b) => b.length - a.length).map(escapeRegExp);
-  // 匹配「X 表情/符號/emoji」（含被標點模型塞的逗點/頓號/句點/空白）或「X」純詞。
-  // 後綴分支：表情符號/表情/符號/emoji（前方可容忍標點與「的」），或純標點，或空。
+  // 與 text_processing.py 的 _build_emoji_re 一致：必須是「名稱＋表情/符號/emoji」才觸發，
+  // 純詞（如「車」「火」）單獨出現不替換，避免誤觸發常見字。
+  // 前方容忍逗點/頓號/空白，名稱後容忍被標點模型塞的句點/頓號/「的」。
   return new RegExp(
     "[，、\\s]?(" + sorted.join("|") + ")" +
-    "(?:[。，、！？\\s]{0,3}的?(?:[表錶]情符號|[表錶]情|符號|emoji)[。，、！？\\s]?|[。，、！？\\s])?",
+    "[。，、！？\\s]{0,3}的?(?:[表錶]情符號|[表錶]情|符號|emoji)[。，、！？\\s]?",
     "gi"
   );
 }
